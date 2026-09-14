@@ -281,6 +281,26 @@ export function parseJsonPointer(path: string): string[] {
   return raw.map(unescapeJsonPointer);
 }
 
+const blockedJsonPointerTokens = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * Reject tokens that can traverse or modify JavaScript prototype chains.
+ * Validation happens after JSON Pointer unescaping so encoded paths cannot
+ * bypass it.
+ */
+function hasBlockedJsonPointerToken(segments: string[]): boolean {
+  return segments.some((segment) => blockedJsonPointerTokens.has(segment));
+}
+
+/** @internal Shared by JSON Pointer-based state stores. */
+export function isSafeJsonPointerPath(path: string): boolean {
+  return !hasBlockedJsonPointerToken(parseJsonPointer(path));
+}
+
 /**
  * Get a value from an object by JSON Pointer path (RFC 6901)
  */
@@ -308,6 +328,9 @@ function readByPath(obj: unknown, path: string): PathReadResult {
   }
 
   const segments = parseJsonPointer(path);
+  if (hasBlockedJsonPointerToken(segments)) {
+    return { valid: false, exists: false };
+  }
 
   let current: unknown = obj;
 
@@ -396,6 +419,8 @@ function canWriteBySegments(
   root: Record<string, unknown>,
   segments: string[],
 ): boolean {
+  if (hasBlockedJsonPointerToken(segments)) return false;
+
   let current: unknown = root;
 
   for (let i = 0; i < segments.length - 1; i++) {
@@ -557,7 +582,9 @@ function removeByPathInternal(
 ): boolean {
   const segments = parseJsonPointer(path);
 
-  if (segments.length === 0) return false;
+  if (segments.length === 0 || hasBlockedJsonPointerToken(segments)) {
+    return false;
+  }
 
   let current: Record<string, unknown> | unknown[] = obj;
 
@@ -850,6 +877,15 @@ export function applySpecStreamPatch<T extends Record<string, unknown>>(
   obj: T,
   patch: SpecStreamLine,
 ): T {
+  if (!isSafeJsonPointerPath(patch.path)) return obj;
+  if (
+    (patch.op === "move" || patch.op === "copy") &&
+    patch.from !== undefined &&
+    !isSafeJsonPointerPath(patch.from)
+  ) {
+    return obj;
+  }
+
   switch (patch.op) {
     case "add":
       addByPath(obj, patch.path, patch.value);

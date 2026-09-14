@@ -79,6 +79,18 @@ describe("immutableSetByPath", () => {
     expect(inferred).toEqual({ records: { "01": { name: "literal" } } });
     expect(appended).toEqual({ items: ["appended"] });
   });
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects %s without changing snapshot identity or its prototype",
+    (token) => {
+      const state = { safe: true };
+      const result = immutableSetByPath(state, `/${token}/polluted`, "value");
+
+      expect(result).toBe(state);
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(result).toEqual({ safe: true });
+    },
+  );
 });
 
 describe("createStateStore", () => {
@@ -261,6 +273,22 @@ describe("createStateStore", () => {
 
     expect(store.getSnapshot()).toEqual({ items: [{ name: "first" }] });
   });
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects %s state paths without publishing a snapshot",
+    (token) => {
+      const store = createStateStore({ safe: true });
+      const listener = vi.fn();
+      const snapshot = store.getSnapshot();
+      store.subscribe(listener);
+
+      store.set(`/${token}/polluted`, "value");
+      store.update({ [`/safe/${token}/polluted`]: "value" });
+
+      expect(store.getSnapshot()).toBe(snapshot);
+      expect(listener).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("createStoreAdapter", () => {
@@ -323,6 +351,20 @@ describe("createStoreAdapter", () => {
     expect(harness.setSnapshot).toHaveBeenCalledTimes(1);
     expect(harness.getSnapshot()).toEqual({ items: [{ name: "first" }] });
   });
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects %s state paths without writing a snapshot",
+    (token) => {
+      const harness = createAdapterHarness({ safe: true });
+      const snapshot = harness.getSnapshot();
+
+      harness.store.set(`/${token}/polluted`, "value");
+      harness.store.update({ [`/safe/${token}/polluted`]: "value" });
+
+      expect(harness.getSnapshot()).toBe(snapshot);
+      expect(harness.setSnapshot).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("flattenToPointers", () => {

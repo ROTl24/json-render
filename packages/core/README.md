@@ -126,6 +126,8 @@ SpecStream format uses [RFC 6902 JSON Patch](https://datatracker.ietf.org/doc/ht
 
 All six RFC 6902 operations are supported: `add`, `remove`, `replace`, `move`, `copy`, `test`.
 
+For prototype safety, JSON Pointer paths containing `__proto__`, `constructor`, or `prototype` tokens are rejected by path utilities, state stores, and SpecStream. This applies to both `path` and `from` in compound patches.
+
 ### Low-Level Utilities
 
 ```typescript

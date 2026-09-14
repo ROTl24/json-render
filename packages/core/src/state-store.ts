@@ -1,5 +1,6 @@
 import {
   getByPath,
+  isSafeJsonPointerPath,
   parseJsonPointer,
   type StateModel,
   type StateStore,
@@ -73,6 +74,8 @@ export function immutableSetByPath(
   path: string,
   value: unknown,
 ): StateModel {
+  if (!isSafeJsonPointerPath(path)) return root;
+
   const segments = parseJsonPointer(path);
   if (segments.length === 0) return root;
   if (!canImmutableSetBySegments(root, segments)) return root;
@@ -143,6 +146,7 @@ export function createStateStore(initialState: StateModel = {}): StateStore {
     },
 
     set(path: string, value: unknown): void {
+      if (!isSafeJsonPointerPath(path)) return;
       if (getByPath(state, path) === value) return;
       const next = immutableSetByPath(state, path, value);
       if (next === state) return;
@@ -154,6 +158,7 @@ export function createStateStore(initialState: StateModel = {}): StateStore {
       let changed = false;
       let next = state;
       for (const [path, value] of Object.entries(updates)) {
+        if (!isSafeJsonPointerPath(path)) continue;
         if (getByPath(next, path) !== value) {
           const updated = immutableSetByPath(next, path, value);
           if (updated !== next) {
@@ -213,6 +218,7 @@ export function createStoreAdapter(config: StoreAdapterConfig): StateStore {
     },
 
     set(path: string, value: unknown): void {
+      if (!isSafeJsonPointerPath(path)) return;
       const current = config.getSnapshot();
       if (getByPath(current, path) === value) return;
       const next = immutableSetByPath(current, path, value);
@@ -224,6 +230,7 @@ export function createStoreAdapter(config: StoreAdapterConfig): StateStore {
       let next = config.getSnapshot();
       let changed = false;
       for (const [path, value] of Object.entries(updates)) {
+        if (!isSafeJsonPointerPath(path)) continue;
         if (getByPath(next, path) !== value) {
           const updated = immutableSetByPath(next, path, value);
           if (updated !== next) {

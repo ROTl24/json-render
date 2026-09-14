@@ -462,6 +462,10 @@ Invalid array reads return `undefined`, and invalid writes or removals are
 no-ops. A `-` token is not valid for reads, removals, or intermediate array
 segments.
 
+For prototype safety, path utilities, state stores, and SpecStream patches
+reject JSON Pointer paths containing `__proto__`, `constructor`, or `prototype`
+tokens. Compound patches validate both `path` and `from` before mutating data.
+
 ### resolveDynamicValue
 
 ```typescript
