@@ -280,6 +280,26 @@ export function parseJsonPointer(path: string): string[] {
   return raw.map(unescapeJsonPointer);
 }
 
+const blockedJsonPointerTokens = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+/**
+ * Reject tokens that can traverse or modify JavaScript prototype chains.
+ * Validation happens after JSON Pointer unescaping so encoded paths cannot
+ * bypass it.
+ */
+function hasBlockedJsonPointerToken(segments: string[]): boolean {
+  return segments.some((segment) => blockedJsonPointerTokens.has(segment));
+}
+
+/** @internal Shared by JSON Pointer-based state stores. */
+export function isSafeJsonPointerPath(path: string): boolean {
+  return !hasBlockedJsonPointerToken(parseJsonPointer(path));
+}
+
 /**
  * Get a value from an object by JSON Pointer path (RFC 6901)
  */
@@ -289,6 +309,7 @@ export function getByPath(obj: unknown, path: string): unknown {
   }
 
   const segments = parseJsonPointer(path);
+  if (hasBlockedJsonPointerToken(segments)) return undefined;
 
   let current: unknown = obj;
 
@@ -362,7 +383,7 @@ export function setByPath(
 ): void {
   const segments = parseJsonPointer(path);
 
-  if (segments.length === 0) return;
+  if (segments.length === 0 || hasBlockedJsonPointerToken(segments)) return;
 
   let current: Record<string, unknown> | unknown[] = obj;
 
@@ -412,7 +433,7 @@ export function addByPath(
 ): void {
   const segments = parseJsonPointer(path);
 
-  if (segments.length === 0) return;
+  if (segments.length === 0 || hasBlockedJsonPointerToken(segments)) return;
 
   let current: Record<string, unknown> | unknown[] = obj;
 
@@ -458,7 +479,7 @@ export function addByPath(
 export function removeByPath(obj: Record<string, unknown>, path: string): void {
   const segments = parseJsonPointer(path);
 
-  if (segments.length === 0) return;
+  if (segments.length === 0 || hasBlockedJsonPointerToken(segments)) return;
 
   let current: Record<string, unknown> | unknown[] = obj;
 
@@ -617,6 +638,15 @@ export function applySpecStreamPatch<T extends Record<string, unknown>>(
   obj: T,
   patch: SpecStreamLine,
 ): T {
+  if (!isSafeJsonPointerPath(patch.path)) return obj;
+  if (
+    (patch.op === "move" || patch.op === "copy") &&
+    patch.from !== undefined &&
+    !isSafeJsonPointerPath(patch.from)
+  ) {
+    return obj;
+  }
+
   switch (patch.op) {
     case "add":
       addByPath(obj, patch.path, patch.value);

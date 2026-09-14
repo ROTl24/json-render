@@ -451,6 +451,8 @@ const value = getByPath(state, '/user/name');  // "Alice"
 setByPath(state, '/user/email', 'alice@example.com');
 ```
 
+For prototype safety, path utilities, state stores, and SpecStream patches reject JSON Pointer paths containing `__proto__`, `constructor`, or `prototype` tokens. Compound patches validate both `path` and `from` before mutating data.
+
 ### resolveDynamicValue
 
 ```typescript

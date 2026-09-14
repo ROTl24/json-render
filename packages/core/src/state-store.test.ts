@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { createStateStore, flattenToPointers } from "./state-store";
+import {
+  createStateStore,
+  flattenToPointers,
+  immutableSetByPath,
+} from "./state-store";
 
 describe("createStateStore", () => {
   it("creates a store with initial state", () => {
@@ -135,6 +139,36 @@ describe("createStateStore", () => {
     store.set("/x", 2);
     expect(store.getServerSnapshot!()).toBe(store.getSnapshot());
   });
+
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects %s state paths without publishing a snapshot",
+    (token) => {
+      const store = createStateStore({ safe: true });
+      const listener = vi.fn();
+      const snapshot = store.getSnapshot();
+      store.subscribe(listener);
+
+      store.set(`/${token}/polluted`, "value");
+      store.update({ [`/safe/${token}/polluted`]: "value" });
+
+      expect(store.getSnapshot()).toBe(snapshot);
+      expect(listener).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("immutableSetByPath", () => {
+  it.each(["__proto__", "constructor", "prototype"])(
+    "rejects %s without changing snapshot identity or its prototype",
+    (token) => {
+      const state = { safe: true };
+      const result = immutableSetByPath(state, `/${token}/polluted`, "value");
+
+      expect(result).toBe(state);
+      expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+      expect(result).toEqual({ safe: true });
+    },
+  );
 });
 
 describe("flattenToPointers", () => {

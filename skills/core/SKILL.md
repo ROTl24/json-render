@@ -77,6 +77,8 @@ const { result, newPatches } = compiler.push(chunk);
 const finalSpec = compiler.getResult();
 ```
 
+JSON Pointer paths containing `__proto__`, `constructor`, or `prototype` tokens are rejected by path utilities, state stores, and SpecStream. For `move` and `copy`, this applies to both `path` and `from`.
+
 ## Dynamic Prop Expressions
 
 Any prop value can be a dynamic expression resolved at render time:

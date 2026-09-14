@@ -216,6 +216,67 @@ describe("JSON Pointer escaping (RFC 6901)", () => {
 });
 
 // =============================================================================
+// JSON Pointer prototype safety
+// =============================================================================
+
+describe("JSON Pointer prototype safety", () => {
+  const blockedTokens = ["__proto__", "constructor", "prototype"];
+
+  it.each(blockedTokens)("rejects %s in path utility writes", (token) => {
+    const pollutionKey = "__json_render_pollution_probe__";
+    const data: Record<string, unknown> = {};
+
+    try {
+      setByPath(data, `/${token}/${pollutionKey}`, "set");
+      addByPath(data, `/safe/${token}/${pollutionKey}`, "add");
+
+      expect(data).toEqual({});
+      expect(Object.prototype).not.toHaveProperty(pollutionKey);
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)[pollutionKey];
+    }
+  });
+
+  it("does not read or remove values through Object.prototype", () => {
+    const pollutionKey = "__json_render_inherited_probe__";
+    (Object.prototype as Record<string, unknown>)[pollutionKey] = "keep";
+
+    try {
+      expect(getByPath({}, `/__proto__/${pollutionKey}`)).toBeUndefined();
+      removeByPath({}, `/__proto__/${pollutionKey}`);
+      expect((Object.prototype as Record<string, unknown>)[pollutionKey]).toBe(
+        "keep",
+      );
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)[pollutionKey];
+    }
+  });
+
+  it.each(blockedTokens)(
+    "rejects compound patches containing %s before mutation",
+    (token) => {
+      const destination: Record<string, unknown> = { source: "one" };
+      applySpecStreamPatch(destination, {
+        op: "move",
+        from: "/source",
+        path: `/${token}/moved`,
+      });
+
+      const source: Record<string, unknown> = {};
+      applySpecStreamPatch(source, {
+        op: "copy",
+        from: `/${token}/value`,
+        path: "/copy",
+      });
+
+      expect(destination).toEqual({ source: "one" });
+      expect(source).toEqual({});
+      expect(Object.hasOwn(source, "copy")).toBe(false);
+    },
+  );
+});
+
+// =============================================================================
 // addByPath (RFC 6902 "add" semantics)
 // =============================================================================
 
