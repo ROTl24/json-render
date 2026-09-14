@@ -638,7 +638,7 @@ function stagePathContainers(
   segments: string[],
   clones: WeakMap<object, MutableContainer>,
   stagedContainers: WeakSet<object>,
-): void {
+): boolean {
   let current = root;
 
   for (let i = 0; i < segments.length - 1; i++) {
@@ -648,13 +648,13 @@ function stagePathContainers(
 
     if (Array.isArray(current)) {
       arrayIndex = parseArrayIndex(segment);
-      if (arrayIndex === undefined) return;
+      if (arrayIndex === undefined) return true;
       child = current[arrayIndex];
     } else {
       child = current[segment];
     }
 
-    if (!isContainer(child)) return;
+    if (!isContainer(child)) return true;
 
     let stagedChild: MutableContainer;
     if (stagedContainers.has(child)) {
@@ -665,6 +665,12 @@ function stagePathContainers(
       stagedContainers.add(stagedChild);
     }
 
+    // A prototype-backed lookup can resolve the original root back to its
+    // staged clone (for example through `__proto__`). Assigning that clone to
+    // itself would throw, while continuing without the assignment would let
+    // preflight mutate the original. Treat the move as invalid instead.
+    if (stagedChild === current) return false;
+
     if (stagedChild !== child) {
       if (Array.isArray(current)) {
         current[arrayIndex!] = stagedChild;
@@ -674,6 +680,8 @@ function stagePathContainers(
     }
     current = stagedChild;
   }
+
+  return true;
 }
 
 /**
@@ -690,10 +698,28 @@ function canMoveByPath(
   const clones = new WeakMap<object, MutableContainer>([[obj, staged]]);
   const stagedContainers = new WeakSet<object>([staged]);
 
-  stagePathContainers(staged, parseJsonPointer(from), clones, stagedContainers);
+  if (
+    !stagePathContainers(
+      staged,
+      parseJsonPointer(from),
+      clones,
+      stagedContainers,
+    )
+  ) {
+    return false;
+  }
   if (!removeByPathInternal(staged, from, true)) return false;
 
-  stagePathContainers(staged, parseJsonPointer(path), clones, stagedContainers);
+  if (
+    !stagePathContainers(
+      staged,
+      parseJsonPointer(path),
+      clones,
+      stagedContainers,
+    )
+  ) {
+    return false;
+  }
   return addByPathInternal(staged, path, value);
 }
 

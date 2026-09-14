@@ -630,6 +630,21 @@ describe("applySpecStreamPatch", () => {
       expect("a" in obj).toBe(false);
     });
 
+    it("does not throw or delete the source for a self-referential staged destination", () => {
+      const obj: Record<string, unknown> = { source: "one" };
+
+      expect(() =>
+        applySpecStreamPatch(obj, {
+          op: "move",
+          from: "/source",
+          path: "/__proto__/moved",
+        }),
+      ).not.toThrow();
+
+      expect(obj).toEqual({ source: "one" });
+      expect(Object.prototype).not.toHaveProperty("moved");
+    });
+
     it("keeps applying later stream patches after a malformed path", () => {
       const result = compileSpecStream(`{"op":"add","path":"/items","value":[]}
 {"op":"add","path":"/items/01","value":"ignored"}
