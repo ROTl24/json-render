@@ -5,7 +5,7 @@
 Generate dynamic, personalized UIs from prompts without sacrificing reliability. Predefined components and actions for safe, predictable output.
 
 <p>
-  <a href="https://vercel.com/labs#labs-products"><img alt="Vercel Labs Product" src="https://img.shields.io/badge/Labs%20Product-000000.svg?style=for-the-badge&amp;logo=Vercel&amp;labelColor=000" height="28"></a>
+  <a href="https://vercel.com/labs#labs-products"><img alt="Vercel Labs Product" src="https://img.shields.io/badge/LABS-PRODUCT-0a0a0a.svg?style=for-the-badge&amp;logo=Vercel&amp;labelColor=000000" height="28"></a>
   <a href="https://www.npmjs.com/package/@json-render/core"><img alt="npm version: @json-render/core" src="https://img.shields.io/npm/v/%40json-render%2Fcore.svg?style=for-the-badge&amp;labelColor=000000" height="28"></a>
   <a href="https://github.com/vercel-labs/json-render/blob/main/LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/github/license/vercel-labs/json-render.svg?style=for-the-badge&amp;labelColor=000000" height="28"></a>
   <a href="https://www.npmjs.com/package/@json-render/core"><img alt="npm downloads per month: @json-render/core" src="https://img.shields.io/npm/dm/%40json-render%2Fcore.svg?style=for-the-badge&amp;labelColor=000000&amp;label=npm%20downloads" height="28"></a>
