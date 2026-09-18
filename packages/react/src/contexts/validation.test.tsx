@@ -1,0 +1,61 @@
+import React from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import type { ValidationConfig } from "@json-render/core";
+import { StateProvider } from "./state";
+import {
+  ValidationProvider,
+  useFieldValidation,
+  useValidation,
+} from "./validation";
+
+const requiredConfig: ValidationConfig = {
+  checks: [{ type: "required", message: "Name is required" }],
+};
+const emailConfig: ValidationConfig = {
+  checks: [{ type: "email", message: "Invalid email" }],
+};
+
+function Field({
+  testId,
+  config,
+}: {
+  testId: string;
+  config: ValidationConfig;
+}) {
+  const { errors } = useFieldValidation("/form/name", config);
+  return <span data-testid={testId}>{errors[0] ?? ""}</span>;
+}
+
+function ValidateButton() {
+  const { validateAll } = useValidation();
+  return <button onClick={validateAll}>Validate</button>;
+}
+
+function TestForm({ showFirst }: { showFirst: boolean }) {
+  return (
+    <StateProvider initialState={{ form: { name: "not-an-email" } }}>
+      <ValidationProvider>
+        {showFirst && (
+          <Field key="first" testId="first" config={requiredConfig} />
+        )}
+        <Field key="active" testId="active" config={emailConfig} />
+        <ValidateButton />
+      </ValidationProvider>
+    </StateProvider>
+  );
+}
+
+describe("ValidationProvider registrations", () => {
+  it("preserves errors when a non-active shared-path registration unmounts", () => {
+    const view = render(<TestForm showFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(screen.getByTestId("first").textContent).toBe("Invalid email");
+    expect(screen.getByTestId("active").textContent).toBe("Invalid email");
+
+    view.rerender(<TestForm showFirst={false} />);
+
+    expect(screen.getByTestId("active").textContent).toBe("Invalid email");
+  });
+});

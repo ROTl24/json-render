@@ -165,7 +165,7 @@ export function ValidationProvider({
         const currentRegistrations = fieldRegistrationsRef.current.get(path);
         if (!currentRegistrations?.has(registrationId)) return;
 
-        const removedConfig = currentRegistrations.get(registrationId)!;
+        const activeConfigBeforeRemoval = getActiveConfig(currentRegistrations);
         currentRegistrations.delete(registrationId);
         const activeConfigAfterRemoval = getActiveConfig(currentRegistrations);
 
@@ -175,7 +175,11 @@ export function ValidationProvider({
 
         if (
           !activeConfigAfterRemoval ||
-          !validationConfigEqual(removedConfig, activeConfigAfterRemoval)
+          !activeConfigBeforeRemoval ||
+          !validationConfigEqual(
+            activeConfigBeforeRemoval,
+            activeConfigAfterRemoval,
+          )
         ) {
           clear(path);
         }
