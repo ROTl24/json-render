@@ -32,6 +32,18 @@ function ValidateButton() {
   return <button onClick={validateAll}>Validate</button>;
 }
 
+function ImperativeRegistration({
+  onRegister,
+}: {
+  onRegister: (value: void) => void;
+}) {
+  const { registerField } = useValidation();
+  React.useEffect(() => {
+    onRegister(registerField("/form/name", requiredConfig));
+  }, [onRegister, registerField]);
+  return null;
+}
+
 function TestForm({ showFirst }: { showFirst: boolean }) {
   return (
     <StateProvider initialState={{ form: { name: "not-an-email" } }}>
@@ -47,6 +59,24 @@ function TestForm({ showFirst }: { showFirst: boolean }) {
 }
 
 describe("ValidationProvider registrations", () => {
+  it("preserves the fire-and-forget registerField contract", () => {
+    let registrationResult: unknown = "not registered";
+
+    render(
+      <StateProvider initialState={{ form: { name: "" } }}>
+        <ValidationProvider>
+          <ImperativeRegistration
+            onRegister={(value) => {
+              registrationResult = value;
+            }}
+          />
+        </ValidationProvider>
+      </StateProvider>,
+    );
+
+    expect(registrationResult).toBeUndefined();
+  });
+
   it("preserves errors when a non-active shared-path registration unmounts", () => {
     const view = render(<TestForm showFirst />);
 

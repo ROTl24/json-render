@@ -45,11 +45,14 @@ export interface ValidationContextValue {
   clear: (path: string) => void;
   /** Validate all fields */
   validateAll: () => boolean;
-  /** Register field config and return its unregister callback */
-  registerField: (path: string, config: ValidationConfig) => () => void;
+  /** Register field config */
+  registerField: (path: string, config: ValidationConfig) => void;
 }
 
 const ValidationContext = createContext<ValidationContextValue | null>(null);
+const MountedFieldRegistrationContext = createContext<
+  ((path: string, config: ValidationConfig) => () => void) | null
+>(null);
 const EMPTY_VALIDATION_FUNCTIONS: Record<string, ValidationFunction> = {};
 
 /**
@@ -128,6 +131,9 @@ export function ValidationProvider({
   const fieldRegistrationsRef = useRef<
     Map<string, Map<symbol, ValidationConfig>>
   >(new Map());
+  // Imperative registerField calls retain one durable registration per path.
+  // Mounted controls use separate identities so they can unregister safely.
+  const imperativeRegistrationIdsRef = useRef<Map<string, symbol>>(new Map());
 
   const clear = useCallback((path: string) => {
     if (!Object.prototype.hasOwnProperty.call(fieldStatesRef.current, path)) {
@@ -140,6 +146,45 @@ export function ValidationProvider({
   }, []);
 
   const registerField = useCallback(
+    (path: string, config: ValidationConfig) => {
+      let registrations = fieldRegistrationsRef.current.get(path);
+      if (!registrations) {
+        registrations = new Map();
+        fieldRegistrationsRef.current.set(path, registrations);
+      }
+
+      const previousActiveConfig = getActiveConfig(registrations);
+      let registrationId = imperativeRegistrationIdsRef.current.get(path);
+      if (!registrationId) {
+        registrationId = Symbol(path);
+        imperativeRegistrationIdsRef.current.set(path, registrationId);
+      }
+
+      const existingConfig = registrations.get(registrationId);
+      if (
+        existingConfig &&
+        previousActiveConfig &&
+        validationConfigEqual(existingConfig, config) &&
+        validationConfigEqual(previousActiveConfig, config)
+      ) {
+        return;
+      }
+
+      // Reinsert changed imperative registrations so the latest registration
+      // keeps the same last-writer-wins behavior as the original path store.
+      registrations.delete(registrationId);
+      registrations.set(registrationId, config);
+      if (
+        previousActiveConfig &&
+        !validationConfigEqual(previousActiveConfig, config)
+      ) {
+        clear(path);
+      }
+    },
+    [clear],
+  );
+
+  const registerMountedField = useCallback(
     (path: string, config: ValidationConfig) => {
       const registrationId = Symbol(path);
       let registrations = fieldRegistrationsRef.current.get(path);
@@ -298,7 +343,9 @@ export function ValidationProvider({
 
   return (
     <ValidationContext.Provider value={value}>
-      {children}
+      <MountedFieldRegistrationContext.Provider value={registerMountedField}>
+        {children}
+      </MountedFieldRegistrationContext.Provider>
     </ValidationContext.Provider>
   );
 }
@@ -341,8 +388,13 @@ export function useFieldValidation(
     validate: validateField,
     touch: touchField,
     clear: clearField,
-    registerField,
   } = useValidation();
+  const registerMountedField = useContext(MountedFieldRegistrationContext);
+  if (!registerMountedField) {
+    throw new Error(
+      "useFieldValidation must be used within a ValidationProvider",
+    );
+  }
 
   // Stabilize structurally equal inline configs so unrelated re-renders do not
   // tear down and recreate a field registration.
@@ -361,8 +413,8 @@ export function useFieldValidation(
   // before a binding path or validation config changes.
   React.useEffect(() => {
     if (!path || !stableConfig) return;
-    return registerField(path, stableConfig);
-  }, [path, stableConfig, registerField]);
+    return registerMountedField(path, stableConfig);
+  }, [path, stableConfig, registerMountedField]);
 
   const state = fieldStates[path] ?? {
     touched: false,
