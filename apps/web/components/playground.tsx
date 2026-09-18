@@ -23,15 +23,13 @@ import { CodeBlock } from "./code-block";
 import { CopyButton } from "./copy-button";
 import { Toaster } from "./ui/sonner";
 import { Header } from "./header";
-import Link from "next/link";
+import { InfoIcon } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { Badge } from "./ui/badge";
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import { Sheet, SheetContent, SheetTitle } from "./ui/sheet";
 import { JsonEditor } from "@visual-json/react";
 import type { JsonValue } from "@visual-json/react";
@@ -68,7 +66,7 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function ModelSelector({
+function ModelToggle({
   model,
   onChange,
   disabled,
@@ -78,34 +76,59 @@ function ModelSelector({
   disabled: boolean;
 }) {
   return (
-    <div className="mb-3 space-y-2">
-      <Select
-        value={model}
-        onValueChange={(value) => onChange(value as PlaygroundModel)}
-        disabled={disabled}
+    <TooltipProvider delayDuration={200}>
+      <div
+        role="group"
+        aria-label="Model"
+        className="flex shrink-0 items-center rounded border border-border text-[10px] font-mono overflow-hidden"
       >
-        <SelectTrigger size="sm" aria-label="Model" className="w-full text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="default">Default model</SelectItem>
-          <SelectItem value="typesafe-ai/jev">
-            Jev{" "}
-            <Badge variant="secondary" className="text-[10px]">
-              Experimental
-            </Badge>
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      {model === "typesafe-ai/jev" && (
-        <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Uses prepared fields and data. Follow up to edit the selected version.{" "}
-          <Link href="/docs/jev" className="underline underline-offset-2">
-            About this experiment
-          </Link>
-        </p>
-      )}
-    </div>
+        <button
+          type="button"
+          aria-label="Default model"
+          aria-pressed={model === "default"}
+          disabled={disabled}
+          onClick={() => onChange("default")}
+          className={`px-1.5 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-50 ${
+            model === "default"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          default
+        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Jev (experimental)"
+              aria-pressed={model === "typesafe-ai/jev"}
+              disabled={disabled}
+              onClick={() => onChange("typesafe-ai/jev")}
+              className={`flex items-center gap-1 px-1.5 py-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:opacity-50 ${
+                model === "typesafe-ai/jev"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              jev
+              <InfoIcon className="size-2.5" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="top"
+            align="start"
+            sideOffset={6}
+            className="max-w-64 space-y-1"
+          >
+            <p className="font-medium">Experimental</p>
+            <p>
+              Jev composes and edits UI from prepared fields, data, and actions.
+              Results may be incomplete.
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -132,6 +155,7 @@ function VersionDetails({ version }: { version: Version }) {
 
 function PlaygroundControls({
   model,
+  setModel,
   disabled,
   format,
   setFormat,
@@ -141,6 +165,7 @@ function PlaygroundControls({
   onClear,
 }: {
   model: PlaygroundModel;
+  setModel: (model: PlaygroundModel) => void;
   disabled: boolean;
   format: StreamFormat;
   setFormat: (f: StreamFormat) => void;
@@ -150,10 +175,11 @@ function PlaygroundControls({
   onClear: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <ModelToggle model={model} onChange={setModel} disabled={disabled} />
       {model !== "typesafe-ai/jev" && (
         <>
-          <div className="flex items-center rounded border border-border text-[10px] font-mono overflow-hidden">
+          <div className="flex shrink-0 items-center rounded border border-border text-[10px] font-mono overflow-hidden">
             {(["jsonl", "yaml"] as const).map((f) => (
               <button
                 key={f}
@@ -169,7 +195,7 @@ function PlaygroundControls({
               </button>
             ))}
           </div>
-          <div className="flex items-center rounded border border-border text-[10px] font-mono overflow-hidden">
+          <div className="flex shrink-0 items-center rounded border border-border text-[10px] font-mono overflow-hidden">
             {(["patch", "merge", "diff"] as const).map((m) => (
               <button
                 key={m}
@@ -683,11 +709,6 @@ ${jsx}
           }
         }}
       >
-        <ModelSelector
-          model={model}
-          onChange={setModel}
-          disabled={isStreaming}
-        />
         <textarea
           ref={inputRef}
           value={inputValue}
@@ -699,9 +720,10 @@ ${jsx}
           rows={2}
           autoFocus
         />
-        <div className="flex justify-between items-center mt-2">
+        <div className="flex justify-between items-end gap-2 mt-2">
           <PlaygroundControls
             model={model}
+            setModel={setModel}
             disabled={isStreaming}
             format={format}
             setFormat={setFormat}
@@ -719,7 +741,7 @@ ${jsx}
           {isStreaming ? (
             <button
               onClick={stop}
-              className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+              className="w-7 h-7 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
               aria-label="Stop"
             >
               <svg
@@ -736,7 +758,7 @@ ${jsx}
             <button
               onClick={handleSubmit}
               disabled={!inputValue.trim()}
-              className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-30"
+              className="w-7 h-7 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-30"
               aria-label="Send"
             >
               <svg
@@ -1353,7 +1375,7 @@ ${jsx}
 
         {/* Prompt input pinned to bottom */}
         <div
-          className="border-t border-border p-3 shrink-0 cursor-text"
+          className="border-t border-border p-3 pb-16 shrink-0 cursor-text"
           onMouseDown={(e) => {
             const target = e.target as HTMLElement;
             if (
@@ -1365,11 +1387,6 @@ ${jsx}
             }
           }}
         >
-          <ModelSelector
-            model={model}
-            onChange={setModel}
-            disabled={isStreaming}
-          />
           <textarea
             ref={mobileInputRef}
             value={inputValue}
@@ -1380,9 +1397,10 @@ ${jsx}
             className="w-full bg-background text-base resize-none outline-none placeholder:text-muted-foreground/50"
             rows={2}
           />
-          <div className="flex justify-between items-center mt-2">
+          <div className="flex justify-between items-end gap-2 mt-2">
             <PlaygroundControls
               model={model}
+              setModel={setModel}
               disabled={isStreaming}
               format={format}
               setFormat={setFormat}
@@ -1400,7 +1418,7 @@ ${jsx}
             {isStreaming ? (
               <button
                 onClick={stop}
-                className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
+                className="w-7 h-7 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors"
                 aria-label="Stop"
               >
                 <svg
@@ -1417,7 +1435,7 @@ ${jsx}
               <button
                 onClick={handleSubmit}
                 disabled={!inputValue.trim()}
-                className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-30"
+                className="w-7 h-7 shrink-0 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-30"
                 aria-label="Send"
               >
                 <svg

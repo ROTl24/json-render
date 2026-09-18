@@ -7,7 +7,7 @@ export const metadata = pageMetadata("docs/jev")
 
 **Availability:** these APIs are unreleased. You can try the source build below before they appear in a published npm version.
 
-Open the [playground](/playground), select **Jev (Experimental)** in the model selector, and send a request. Or use your own catalog in your app. [Share feedback](https://github.com/vercel-labs/json-render/issues/new) with your catalog, candidates, request, resulting spec, and expected behavior. Remove private data from reproductions.
+Open the [playground](/playground), select **jev** in the **default / jev** toggle, and send a request. Hover or focus the Jev option with its info icon for details about the experiment. Or use your own catalog in your app. [Share feedback](https://github.com/vercel-labs/json-render/issues/new) with your catalog, candidates, request, resulting spec, and expected behavior. Remove private data from reproductions.
 
 ## Why use it?
 
@@ -163,7 +163,7 @@ The playground is a reference implementation: [candidates and server wrapper](ht
 
 The playground offers 15 component types with prepared account/contact fields, validation rules, synthetic commerce data, and local Save/Reset/Submit actions. A title in double quotes becomes an extra Heading candidate. Values entered in the rendered preview stay in the browser.
 
-Select **Jev (Experimental)**, choose **Create account settings**, and send the request. Edit the fields and press **Save changes**. The status changes locally; **Reset** restores the form. Login/contact submission validates inputs and shows a demo toast. The demo does not authenticate users, send messages, or save business records.
+Select **jev**, choose **Create account settings**, and send the request. Edit the fields and press **Save changes**. The status changes locally; **Reset** restores the form. Login/contact submission validates inputs and shows a demo toast. The demo does not authenticate users, send messages, or save business records.
 
 Both model options edit the selected version. After generating settings with Jev, try `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. Select any earlier version to branch from it; Clear starts fresh. New text still needs a prepared candidate or a quoted heading. The playground shares existing display labels to identify edit targets, but does not send entered form values or raw state to Jev. Specs using unsupported expressions cannot be edited by Jev.
 

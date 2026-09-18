@@ -1,6 +1,6 @@
 # Jev composing catalog UI
 
-Open **`/playground`** and select **Jev (Experimental)** in the model selector. This experiment uses Jev through Vercel AI Gateway to compose a tree and edit it in follow-up requests. It renders with the **actual playground catalog and registry**, including the existing shadcn components, state bindings, validation, and action handlers.
+Open **`/playground`** and select **jev** in the **default / jev** toggle. Hover or focus the Jev option with its info icon to read its experimental status. This experiment uses Jev through Vercel AI Gateway to compose a tree and edit it in follow-up requests. It renders with the **actual playground catalog and registry**, including the existing shadcn components, state bindings, validation, and action handlers.
 
 ## Run
 
@@ -62,7 +62,7 @@ The server uses Gateway's experimental v4 evaluation transport with model `types
 - `compose.ts`: public API consumer with playground instructions and cost display.
 - `../../app/api/generate/route.ts`: shared rate-limited endpoint, dispatching the selected model.
 - `response.ts`: adapts composition snapshots into the playground's JSONL spec patches and decision metadata.
-- `../../components/playground.tsx`: shared model selector, prompt, version history, live preview, and inspectors.
+- `../../components/playground.tsx`: shared model toggle, experimental info tooltip, prompt, version history, live preview, and inspectors.
 - `compose.test.ts`: structure, action boundaries, unknown usage, cancellation, and limits.
 
 ```sh
