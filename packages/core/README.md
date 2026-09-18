@@ -32,6 +32,7 @@ for await (const event of experimental_composeSpec({
   initialState: { name: "" },
   evaluate,
   maxSteps: 12,
+  maxElements: 24,
   signal: AbortSignal.timeout(30_000),
 })) {
   // Send snapshots to your client and render using your existing registry.
@@ -42,11 +43,17 @@ for await (const event of experimental_composeSpec({
 
 Candidates contain `id`, `description`, and an atomic `element` (`type`, `props`, optional `on` and `visible`). `root: false` excludes a candidate from root selection; `maxUses` defaults to one; candidates sharing a `resource` are mutually exclusive. The catalog's slots determine where children can be attached. Props and action parameters are checked against initial state; expressions remain live in the output. Actions are never executed by the composer.
 
+Candidates are configured component instances. The model constructs their tree, grouping, and order; it does not choose arbitrary prop values from the full catalog schema. Apps can build candidates per request from their records and permitted operations, or bind props to data in `initialState`. To let the model choose a different chart type or field configuration, supply those alternatives as candidates. No complete page template is required. Explicitly name required sections in the prompt; structural validation does not detect omitted content.
+
+New compositions default to `strategy: "batch"`. One evaluation selects the root and component membership together, grouping mutually exclusive variants into one question and selecting bounded counts for reusable recipes. The first snapshot contains the selected content in catalog order under the root's default slot (or first declared slot). A second evaluation arranges parent slots and sibling order when needed. The entire resulting tree is validated before it is emitted; inconsistent placements throw and leave the first snapshot usable as partial UI. Equal sibling positions retain catalog order. Root selection takes precedence over speculative membership/count answers for the same recipe or resource. No separate finish call is needed.
+
+`maxElements` bounds batched creation (default 32, including the root). An element/depth limit or a missing layout evaluation due to `maxSteps` produces `stopReason: "limit"`. Set `strategy: "sequential"` for one-operation-at-a-time creation or an existing custom evaluator using the `next`/`parent` protocol. Follow-up edits always use that sequential protocol, regardless of strategy.
+
 For follow-up edits, pass the selected version as `initialSpec`. The composer can add candidates, replace an element's recipe while preserving its ID and children, remove a non-root subtree, or move/reorder a subtree among valid slots. Unchanged elements and state are retained, and the input spec is never mutated. `elementDescriptions` optionally supplies text identifying existing elements to the evaluator; otherwise matching recipes supply descriptions, with component names as the fallback. Raw props and state remain private. `initialState`, if supplied, replaces the seed's state.
 
 Seed specs must be valid trees within the same catalog, supported expression subset, and depth limit. Existing elements that exactly match a candidate count toward its usage/resource limits. Removing or replacing them releases those limits. Replacements and moves use a second evaluation to select a valid recipe or destination; both decisions count toward `maxSteps`. A budget or cancellation can stop before an edit is applied.
 
-The async generator emits detached `step` snapshots and a `complete` event with `stopReason: "finish" | "limit" | "unavailable"`, decision traces, timing, and nullable input usage. Completion can include a partial spec or no spec. Provider errors, invalid choices, and cancellation throw. Defaults: 32 evaluations, depth eight, and a 10-second per-call Gateway timeout.
+The async generator emits detached `step` snapshots and a `complete` event with `stopReason: "finish" | "limit" | "unavailable"`, decision traces, timing, and nullable input usage. A batched trace represents one evaluation (`choice: "select"` or `"layout"`) and includes its independent `answers`; time and tokens are counted once per evaluation. Completion can include a partial spec or no spec, and does not guarantee that the model selected the right content. Provider errors, invalid choices, invalid combined layouts, and cancellation throw. Defaults: 32 evaluations, depth eight, and a 10-second per-call Gateway timeout.
 
 V1 supports standard flat Spec catalogs, literals, `$state`, `$bindState`, state-based visibility, and named slots. It excludes repeat/watch, computed/custom expressions, and subtrees within candidate recipes. Bindings must resolve to valid values in the seed state or explicit `initialState`; handlers must still validate later user input. Candidate descriptions, element descriptions, and explicit `context` are sent to the evaluator; state values and raw props/bindings are not sent automatically.
 

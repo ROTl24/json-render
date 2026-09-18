@@ -46,6 +46,7 @@ const catalog = defineCatalog(schema, {
   },
   actions: { inspect: { params: z.object({ reading: z.number() }) } },
 });
+
 const candidates: Experimental_CompositionCandidate[] = [
   {
     id: "panel",
@@ -84,6 +85,7 @@ const candidates: Experimental_CompositionCandidate[] = [
   },
 ];
 const options = {
+  strategy: "sequential" as const,
   catalog,
   candidates,
   prompt: "Build a telemetry panel",
@@ -637,5 +639,303 @@ describe("experimental_composeSpec", () => {
         },
       }),
     ).rejects.toThrow("stopped");
+  });
+});
+
+describe("batched composition", () => {
+  function batch(overrides: Partial<Experimental_ComposeSpecOptions> = {}) {
+    return collect({ strategy: undefined, evaluate: batched(), ...overrides });
+  }
+  function batched(
+    selections: Record<string, string> = {},
+    layout: Record<string, string> = {},
+  ): Experimental_CompositionEvaluator {
+    return vi.fn(async ({ questions }) => ({
+      answers: Object.fromEntries(
+        Object.keys(questions).map((name) => [
+          name,
+          {
+            choice: questions.root
+              ? {
+                  root: "panel",
+                  select_0: "1",
+                  select_1: "use:temperature",
+                  select_2: "use:inspect",
+                  ...selections,
+                }[name]!
+              : {
+                  parent_node_1: "node_0:default",
+                  parent_node_2: "node_0:footer",
+                  order_node_1: "1",
+                  order_node_2: "1",
+                  ...layout,
+                }[name]!,
+          },
+        ]),
+      ),
+      usage: { inputTokens: 10 },
+    }));
+  }
+
+  it("renders content in the first of two evaluations and arranges named slots atomically", async () => {
+    const evaluate = batched();
+    const events = await batch({ evaluate });
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    expect(events).toHaveLength(3);
+    expect(events[0]!.spec!.elements.node_0!.children).toEqual([
+      "node_1",
+      "node_2",
+    ]);
+    expect(events[0]!.spec!.elements.node_1!.props).toEqual({
+      value: { $state: "/temperature" },
+    });
+    expect(events[1]!.spec!.elements.node_0!.children).toEqual(["node_1"]);
+    expect(events[1]!.spec!.elements.node_0!.slots).toEqual({
+      footer: ["node_2"],
+    });
+    expect(events[1]!.spec!.elements.node_2!.on).toEqual(
+      candidates[3]!.element.on,
+    );
+    expect(events[2]).toMatchObject({
+      stopReason: "finish",
+      inputTokens: 20,
+      steps: [
+        { choice: "select", index: 0 },
+        { choice: "layout", index: 1 },
+      ],
+    });
+    expect(events[0]!.spec!.elements.node_0!.children).toHaveLength(2);
+  });
+
+  it("keeps resource variants mutually exclusive and caps repeated root instances", async () => {
+    const evaluate = batched(
+      { select_0: "2", select_1: "use:alternate" },
+      {
+        parent_node_1: "node_0:default",
+        order_node_1: "1",
+        parent_node_2: "node_1:default",
+        order_node_2: "1",
+        parent_node_3: "node_1:footer",
+        order_node_3: "1",
+      },
+    );
+    const result = (await batch({ evaluate })).at(-1)!.spec!;
+    expect(
+      Object.values(result.elements).filter((e) => e.type === "Panel"),
+    ).toHaveLength(2);
+    expect(result.elements.node_2!.props.value).toBe(20);
+    expect(result.elements.node_1!.children).toEqual(["node_2"]);
+    expect(result.elements.node_1!.slots).toEqual({ footer: ["node_3"] });
+    const request = vi.mocked(evaluate).mock.calls[0]![0];
+    expect(request.questions.root!.criteria).not.toHaveProperty("temperature");
+    expect(request.questions.select_1!.criteria).toHaveProperty(
+      "use:temperature",
+    );
+    expect(request.questions.select_1!.criteria).toHaveProperty(
+      "use:alternate",
+    );
+    expect(request.questions.select_0!.criteria).not.toHaveProperty("6");
+  });
+
+  it("uses the evaluator's sibling order independently of candidate order", async () => {
+    const events = await batch({
+      evaluate: batched(
+        {},
+        {
+          parent_node_2: "node_0:default",
+          order_node_1: "2",
+          order_node_2: "1",
+        },
+      ),
+    });
+    const preview = events[0]!.spec!;
+    const final = events.at(-1)!.spec!;
+    expect(preview.elements.node_0!.children).toEqual(["node_1", "node_2"]);
+    expect(final.elements.node_0!.children).toEqual(["node_2", "node_1"]);
+    expect(final.elements.node_1).toEqual(preview.elements.node_1);
+    expect(final.elements.node_2).toEqual(preview.elements.node_2);
+    expect(final.state).toEqual(preview.state);
+  });
+
+  it("preserves the first valid preview when independently chosen parents form a cycle", async () => {
+    const events: Experimental_CompositionEvent[] = [];
+    const evaluate = batched(
+      { select_0: "3" },
+      {
+        parent_node_1: "node_2:default",
+        parent_node_2: "node_1:default",
+        parent_node_3: "node_0:default",
+        parent_node_4: "node_0:footer",
+        order_node_1: "1",
+        order_node_2: "2",
+        order_node_3: "3",
+        order_node_4: "4",
+      },
+    );
+    await expect(
+      (async () => {
+        for await (const event of experimental_composeSpec({
+          ...options,
+          strategy: "batch",
+          evaluate,
+        }))
+          events.push(event);
+      })(),
+    ).rejects.toThrow(/unreachable|cycle/);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.spec!.elements.node_0!.children).toHaveLength(4);
+  });
+
+  it("rejects a combined layout that exceeds the depth budget", async () => {
+    await expect(
+      batch({
+        maxDepth: 3,
+        evaluate: batched(
+          { select_0: "3" },
+          {
+            parent_node_1: "node_0:default",
+            parent_node_2: "node_1:default",
+            parent_node_3: "node_2:default",
+            parent_node_4: "node_0:footer",
+            order_node_1: "1",
+            order_node_2: "2",
+            order_node_3: "3",
+            order_node_4: "4",
+          },
+        ),
+      }),
+    ).rejects.toThrow("maxDepth");
+  });
+
+  it("reports element, depth and evaluation limits as partial output", async () => {
+    for (const limits of [
+      { maxElements: 2 },
+      { maxDepth: 1 },
+      { maxSteps: 1 },
+    ]) {
+      const evaluate = batched();
+      const events = await batch({ ...limits, evaluate });
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(events.at(-1)).toMatchObject({ stopReason: "limit" });
+      expect(
+        Object.keys(events.at(-1)!.spec!.elements).length,
+      ).toBeLessThanOrEqual(limits.maxElements ?? 3);
+    }
+  });
+
+  it("finishes single-element results in one call and keeps unavailable results empty", async () => {
+    expect(
+      (
+        await batch({
+          evaluate: batched({ select_1: "omit", select_2: "omit" }),
+        })
+      ).at(-1),
+    ).toMatchObject({ stopReason: "finish", steps: [{ choice: "select" }] });
+    expect(
+      (await batch({ evaluate: batched({ root: "unavailable" }) })).at(-1),
+    ).toMatchObject({ stopReason: "unavailable", spec: null });
+  });
+
+  it("does not share state or allow evaluator/consumer mutations to alter future output", async () => {
+    const choose = batched();
+    const evaluate: Experimental_CompositionEvaluator = (request) => {
+      expect(JSON.stringify(request)).not.toContain("not-for-the-model");
+      const result = choose(request);
+      if (request.questions.root)
+        request.questions.root.criteria.injection = "not allowed";
+      return result;
+    };
+    const iterator = experimental_composeSpec({
+      ...options,
+      strategy: "batch",
+      evaluate,
+    });
+    const first = await iterator.next();
+    first.value!.spec!.elements.node_1!.props.value = "consumer mutation";
+    const rest = await collectEvents(iterator);
+    expect(rest.at(-1)!.spec!.elements.node_1!.props.value).toEqual({
+      $state: "/temperature",
+    });
+    await expect(
+      batch({
+        evaluate: async (request) => {
+          request.questions.root!.criteria.injection = "not allowed";
+          return {
+            answers: {
+              ...(await batched()(request)).answers,
+              root: { choice: "injection" },
+            },
+          };
+        },
+      }),
+    ).rejects.toThrow("outside the permitted");
+  });
+
+  it("rejects missing, arbitrary and invalid batched answers before rendering", async () => {
+    for (const override of [
+      { choice: "injected" },
+      { choice: "panel", confidence: NaN },
+    ]) {
+      await expect(
+        batch({
+          evaluate: async (request) => ({
+            answers: { ...(await batched()(request)).answers, root: override },
+          }),
+        }),
+      ).rejects.toThrow();
+    }
+    await expect(
+      batch({ evaluate: async () => ({ answers: {} }) }),
+    ).rejects.toThrow("outside the permitted");
+    await expect(
+      batch({
+        evaluate: async (request) => ({
+          ...(await batched()(request)),
+          usage: { inputTokens: -1 },
+        }),
+      }),
+    ).rejects.toThrow("usage");
+    expect(
+      (
+        await batch({
+          evaluate: async (request) => ({
+            answers: (await batched()(request)).answers,
+          }),
+        })
+      ).at(-1),
+    ).toMatchObject({ inputTokens: null });
+  });
+
+  it("stops at consumer return or abort without making a layout call", async () => {
+    const evaluate = batched();
+    const iterator = experimental_composeSpec({
+      ...options,
+      strategy: "batch",
+      evaluate,
+    });
+    await iterator.next();
+    await iterator.return(undefined);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    const controller = new AbortController();
+    const aborted = experimental_composeSpec({
+      ...options,
+      strategy: "batch",
+      evaluate,
+      signal: controller.signal,
+    });
+    await aborted.next();
+    controller.abort(new Error("stopped"));
+    await expect(aborted.next()).rejects.toThrow("stopped");
+    expect(evaluate).toHaveBeenCalledTimes(2);
+    const during = new AbortController();
+    await expect(
+      batch({
+        signal: during.signal,
+        evaluate: async () => {
+          queueMicrotask(() => during.abort(new Error("during")));
+          return new Promise(() => {});
+        },
+      }),
+    ).rejects.toThrow("during");
   });
 });

@@ -8,7 +8,60 @@ function scripted(
   usage: number | undefined = 100,
 ): Evaluate {
   let index = 0;
-  return async ({ questions }) => {
+  return async ({ questions, state }) => {
+    if (
+      questions.root ||
+      Object.keys(questions).some((name) => name.startsWith("order_"))
+    ) {
+      const candidates = buildCandidates(String(state.user_request));
+      const selected = state.selected_elements as
+        | { id: string; content: string }[]
+        | undefined;
+      const idFor = (candidateId: string) =>
+        selected?.find(
+          (element) =>
+            element.content ===
+            candidates.find((c) => c.id === candidateId)?.description,
+        )?.id;
+      const answers = Object.fromEntries(
+        Object.entries(questions).map(([name, question]) => {
+          let choice: string;
+          if (name === "root") choice = choices[0]!.next;
+          else if (name.startsWith("select_")) {
+            if (Object.hasOwn(question.criteria, "0")) {
+              const candidate = candidates.find((c) =>
+                question.instructions.includes(c.description),
+              )!;
+              choice = String(
+                choices.filter((c) => c.next === candidate.id).length,
+              );
+            } else {
+              choice =
+                choices
+                  .map((c) => `use:${c.next}`)
+                  .find((key) => Object.hasOwn(question.criteria, key)) ??
+                "omit";
+            }
+          } else {
+            const id = name.replace(/^(parent|order)_/, "");
+            const element = selected!.find((e) => e.id === id)!;
+            const candidate = candidates.find(
+              (c) => c.description === element.content,
+            )!;
+            const at = choices.findIndex((c) => c.next === candidate.id);
+            const fixture = choices[at]!;
+            if (name.startsWith("order_")) choice = String(at);
+            else if (fixture.parent?.startsWith("node_")) {
+              const originalParent =
+                choices[Number(fixture.parent.slice(5))]!.next;
+              choice = `${idFor(originalParent)}:default`;
+            } else choice = fixture.parent ?? "node_0:default";
+          }
+          return [name, { choice, confidence: 0.9 }];
+        }),
+      );
+      return { answers, usage: { inputTokens: usage } };
+    }
     const selected = choices[index++];
     if (!selected) throw new Error("Unexpected extra model call");
     const answers = Object.fromEntries(
@@ -157,26 +210,32 @@ describe("Jev catalog composition", () => {
     if (result.type !== "complete") throw new Error("Missing final result");
     expect(result.stopReason).toBe("finish");
     expect(result.spec?.elements.node_0?.children).toEqual([
-      "node_1",
       "node_2",
+      "node_1",
       "node_5",
     ]);
-    expect(result.spec?.elements.node_2?.children).toEqual([
+    expect(result.spec?.elements.node_1?.children).toEqual([
       "node_3",
       "node_4",
     ]);
-    expect(result.spec?.elements.node_1?.props.value).toEqual({
+    expect(result.spec?.elements.node_2?.props.value).toEqual({
       $bindState: "/form/email",
     });
     expect(result.spec?.elements.node_3?.on?.press).toEqual({
       action: "setState",
       params: { statePath: "/status", value: "Changes saved locally." },
     });
-    expect(result.inputTokens).toBe(700);
+    expect(result.inputTokens).toBe(200);
+    expect(result.steps).toHaveLength(2);
     // Streamed snapshots stay immutable as later elements are appended.
     const first = events[0]!;
     expect(first.type === "step" && Object.keys(first.spec.elements)).toEqual([
       "node_0",
+      "node_1",
+      "node_2",
+      "node_3",
+      "node_4",
+      "node_5",
     ]);
   });
 
@@ -229,7 +288,7 @@ describe("Jev catalog composition", () => {
     expect(events.at(-1)?.type).toBe("complete");
     const choices = [
       { next: "card" },
-      ...Array.from({ length: MAX_ELEMENTS - 1 }, () => ({
+      ...Array.from({ length: MAX_ELEMENTS }, () => ({
         next: "separator",
       })),
     ];

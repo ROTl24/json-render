@@ -4,6 +4,7 @@ import { resolveElementProps, resolvePropValue } from "./props";
 import { validateSpec } from "./spec-validator";
 import type { Spec, UIElement } from "./types";
 import { VisibilityConditionStrictSchema } from "./visibility";
+import { composeBatch } from "./experimental-composition-batch";
 import {
   atomicElement,
   attach,
@@ -85,6 +86,8 @@ export interface Experimental_CompositionStep {
   parentConfidence: number | null;
   elapsedMs: number;
   inputTokens: number | null;
+  /** Independent answers from a batched selection or layout evaluation. */
+  answers?: Experimental_CompositionEvaluation["answers"];
 }
 
 export type Experimental_CompositionEvent =
@@ -103,6 +106,10 @@ export interface Experimental_ComposeSpecOptions {
   candidates: readonly Experimental_CompositionCandidate[];
   prompt: string;
   evaluate: Experimental_CompositionEvaluator;
+  /** New trees use batched selection/layout by default. Edits remain sequential. */
+  strategy?: "batch" | "sequential";
+  /** Element budget for batched creation, including the root. Default: 32. */
+  maxElements?: number;
   /** Edit an existing tree. Cloned and validated before evaluation. */
   initialSpec?: Spec;
   /** Descriptions explicitly shared for existing elements, keyed by element ID. */
@@ -112,7 +119,7 @@ export interface Experimental_ComposeSpecOptions {
   /** Additional app context explicitly shared with the evaluator. */
   context?: Record<string, unknown>;
   signal?: AbortSignal;
-  /** Evaluation budget, including the finish decision. Default: 32. */
+  /** Evaluation budget, including sequential terminal decisions. Default: 32. */
   maxSteps?: number;
   /** Root has depth one. Default: 8. */
   maxDepth?: number;
@@ -230,6 +237,33 @@ async function evaluateWithSignal(
   }
 }
 
+function validateEvaluation(
+  result: Experimental_CompositionEvaluation,
+  questions: Record<string, Experimental_ChoiceQuestion>,
+) {
+  for (const [name, question] of Object.entries(questions)) {
+    const answer = result.answers?.[name];
+    if (
+      !answer ||
+      typeof answer.choice !== "string" ||
+      !Object.hasOwn(question.criteria, answer.choice)
+    )
+      throw new Error(
+        "Evaluator returned a choice outside the permitted catalog operations.",
+      );
+    if (
+      answer.confidence !== undefined &&
+      (!Number.isFinite(answer.confidence) ||
+        answer.confidence < 0 ||
+        answer.confidence > 1)
+    )
+      throw new Error("Evaluator returned invalid confidence.");
+  }
+  const tokens = result.usage?.inputTokens;
+  if (tokens != null && (!Number.isSafeInteger(tokens) || tokens < 0))
+    throw new Error("Evaluator returned invalid usage.");
+}
+
 /**
  * Experimental catalog-constrained composition. Streams detached Spec snapshots.
  * Throws on invalid configuration, evaluator output, provider errors, or abort.
@@ -242,8 +276,15 @@ export async function* experimental_composeSpec(
   const signal = options.signal ?? new AbortController().signal;
   const maxSteps = options.maxSteps ?? 32;
   const maxDepth = options.maxDepth ?? 8;
+  const maxElements = options.maxElements ?? 32;
   positiveInteger(maxSteps, "maxSteps");
   positiveInteger(maxDepth, "maxDepth");
+  positiveInteger(maxElements, "maxElements");
+  if (
+    options.strategy !== undefined &&
+    !["batch", "sequential"].includes(options.strategy)
+  )
+    throw new Error("Unknown composition strategy.");
   signal.throwIfAborted();
   const candidates = structuredClone(options.candidates);
   const spec: Spec = options.initialSpec
@@ -265,10 +306,10 @@ export async function* experimental_composeSpec(
     positiveInteger(candidate.maxUses ?? 1, "maxUses");
     validateCandidate(candidate, catalog, state);
   }
-  function validateTree() {
-    const positions = indexTree(spec, catalog, maxDepth);
-    if (spec.root) {
-      const resolved = structuredClone(spec);
+  function validateTree(tree = spec) {
+    const positions = indexTree(tree, catalog, maxDepth);
+    if (tree.root) {
+      const resolved = structuredClone(tree);
       for (const [id, element] of Object.entries(resolved.elements)) {
         validateCandidate(
           {
@@ -283,7 +324,7 @@ export async function* experimental_composeSpec(
           stateModel: state,
         });
       }
-      if (!catalog.validate(resolved).success || !validateSpec(spec).valid)
+      if (!catalog.validate(resolved).success || !validateSpec(tree).valid)
         throw new Error(
           "Composed spec does not match the catalog's flat Spec schema.",
         );
@@ -291,6 +332,47 @@ export async function* experimental_composeSpec(
     return positions;
   }
   let positions = validateTree();
+  const checkedEvaluate: Experimental_CompositionEvaluator = async (
+    request,
+  ) => {
+    const result = await evaluateWithSignal(evaluate, {
+      ...structuredClone({
+        state: request.state,
+        questions: request.questions,
+      }),
+      signal,
+    });
+    signal.throwIfAborted();
+    validateEvaluation(result, request.questions);
+    return structuredClone({
+      answers: Object.fromEntries(
+        Object.keys(request.questions).map((name) => [
+          name,
+          result.answers[name]!,
+        ]),
+      ),
+      usage: result.usage,
+    });
+  };
+  if (!options.initialSpec && options.strategy !== "sequential") {
+    yield* composeBatch(
+      {
+        catalog,
+        candidates,
+        prompt,
+        context,
+        instructions,
+        initialState: state,
+        evaluate: checkedEvaluate,
+        signal,
+        maxSteps,
+        maxDepth,
+        maxElements,
+      },
+      validateTree,
+    );
+    return;
+  }
   const used = new Map<string, Experimental_CompositionCandidate>();
   const descriptions = new Map(
     Object.entries(options.elementDescriptions ?? {}),
@@ -488,7 +570,7 @@ export async function* experimental_composeSpec(
         ),
       };
     const callStarted = performance.now();
-    const result = await evaluateWithSignal(evaluate, {
+    const result = await checkedEvaluate({
       state: structuredClone({
         user_request: prompt,
         already_built: Object.entries(spec.elements).map(([id, element]) => ({
@@ -507,27 +589,7 @@ export async function* experimental_composeSpec(
       signal,
     });
     signal.throwIfAborted();
-    for (const [name, question] of Object.entries(questions)) {
-      const answer = result.answers?.[name];
-      if (
-        !answer ||
-        typeof answer.choice !== "string" ||
-        !Object.hasOwn(question.criteria, answer.choice)
-      )
-        throw new Error(
-          "Evaluator returned a choice outside the permitted catalog operations.",
-        );
-      if (
-        answer.confidence !== undefined &&
-        (!Number.isFinite(answer.confidence) ||
-          answer.confidence < 0 ||
-          answer.confidence > 1)
-      )
-        throw new Error("Evaluator returned invalid confidence.");
-    }
     const tokens = result.usage?.inputTokens ?? null;
-    if (tokens !== null && (!Number.isSafeInteger(tokens) || tokens < 0))
-      throw new Error("Evaluator returned invalid usage.");
     inputTokens =
       inputTokens === null || tokens === null ? null : inputTokens + tokens;
     const answer = result.answers.next!;

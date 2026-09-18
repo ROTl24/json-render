@@ -61,6 +61,7 @@ export async function* composeUI(
     signal,
     evaluate,
     maxSteps: MAX_ELEMENTS,
+    maxElements: MAX_ELEMENTS,
     maxDepth: 4,
     context: {
       platform:
@@ -68,7 +69,7 @@ export async function* composeUI(
     },
     instructions: {
       root: "Use Card for a compact form or profile card. Use vertical Stack for a page with a heading and several sections, including a dashboard containing a metric row followed by charts or tables. Use Grid as root only when the entire page is one uniform grid of peers.",
-      next: "Before adding a requested side-by-side group, add its Grid or horizontal Stack if missing. Add only requested content or conventional essentials (login needs email, password, and submit; a profile card displays avatar, name, role, and bio). Use display elements for viewing data and form fields when the user asks to enter or edit data. Prefer a compact tree.",
+      next: "Include a Grid or horizontal Stack for a requested side-by-side group. Include only requested content or conventional essentials (login needs email, password, and submit; a profile card displays avatar, name, role, and bio). Use display elements for viewing data and form fields when the user asks to enter or edit data. Prefer a compact tree. Do not include an extra vertical Stack inside a Card unless an explicit subgroup needs it.",
       parent:
         "Never put headings or form fields inside a horizontal button row. Choose the root for a new top-level section.",
     },

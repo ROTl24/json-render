@@ -18,19 +18,17 @@ Select Jev, choose Create account settings, and send the request. Edit the name,
 
 ## How Jev produces a spec
 
-Jev exposes Choice, Boolean, and Score outputs. It does not produce free-form JSON or prose. We express UI construction as a sequence of finite choices:
+Jev exposes Choice, Boolean, and Score outputs. It does not produce free-form JSON or prose. We express new UI construction as two batches of finite choices:
 
-1. Begin with the selected version, or an empty spec and platform state for the first request.
-2. Offer allowed catalog operations, such as adding an email Input with a state binding, a Grid with three columns, or a Button bound to `formSubmit`.
-3. Jev chooses the next operation and an existing container to receive it. Once multiple parents exist, the two choices are returned in the same evaluation call.
-4. Code resolves the chosen operation into an element, assigns its ID, adds the tree edge, and validates the result against the catalog and initial state. Action names, events, and parameters are also checked.
-5. Stream the valid spec to the existing renderer. Feed a compact description of the constructed tree into the next evaluation.
-6. On follow-ups, also offer replacement, removal, and move/reorder operations. Replacements and moves select a target, then choose a valid recipe or destination in a second evaluation. Preserve unchanged elements and earlier versions.
-7. Stop when Jev chooses `finish` or `unavailable`, or the code reaches its evaluation limit.
+1. Offer the root and independent component membership questions in one evaluation. Exclusive resource variants share a question; reusable recipes get bounded counts. Candidate values include state/action bindings owned by the app.
+2. Assemble and validate the selected content, then stream a preview immediately. This preview uses catalog order and the root's default slot. Root selection takes precedence over speculative membership for the same recipe/resource.
+3. Ask final parent slots and sibling positions in a second evaluation against the actual selected set. Validate the combined tree, including depth and cycles, before streaming it. Equal positions retain catalog order. A single root or one child in a single slot needs no second call. No separate finish call is needed.
+4. On follow-ups, use the selected spec with the sequential edit protocol: add, replace, remove, or move/reorder. Replacements and moves select a target, then choose a valid recipe or destination in a second evaluation. Preserve unchanged elements and earlier versions.
+5. Each trace represents one evaluation. Batched traces use `select`/`layout` with the independent decisions in `answers`; timing and usage are counted once per call. Provider errors or invalid combined layouts preserve the last valid preview and report failure.
 
 There are **no complete UI templates** and no generative-model calls. The example prompt buttons only populate the request text. Jev chooses which elements to include, their order, grouping, and which offered action bindings to use. The registry owns appearance and behavior.
 
-The loop resembles autoregressive generation at the level of catalog operations. Jev does not author the serialized JSON; code assembles it from the choices.
+Batching avoids a network round trip per component. Jev does not author the serialized JSON; code assembles it from the choices. The public API also supports `strategy: "sequential"` for one-operation-at-a-time creation and existing custom evaluators.
 
 ## What the platform must supply
 
@@ -42,11 +40,15 @@ A component catalog bounds component names, props, and events, but string and ar
 
 These are **atomic element candidates**, not page templates. A host application could build them from its actual data schema, records, localized copy, and permitted operations. This example supplies those values in `grammar.ts`; apps supply their own candidates to the reusable core API. Repeating the same field in multiple forms and arbitrary new text/data are not supported.
 
+Each candidate also fixes a component configuration. The prepared revenue BarGraph can be selected and moved, but choosing a LineGraph requires another candidate. Apps can bind props to their live state or build candidates per request; data need not be hardcoded. Jev determines the tree, grouping, and section order within those offered configurations.
+
 ## Limits
 
 The composer validates tree structure and candidate values; it does not guarantee that Jev chose the right UI. Root selection, grouping, and deciding when to stop require planning, which is a documented weakness of Jev. Confidence is displayed without a quality gate: multiple layout choices may be reasonable, and a universal threshold has not been calibrated.
 
-The code bounds each request to 14 evaluation calls, nesting depth four, ten seconds per provider request, and 55 seconds overall. The selected seed may contain up to 100 elements. A limit, cancellation, or error retains the current preview and labels it partial. The shared endpoint uses the web app's request rate limiters. Both models edit the selected version; Clear starts fresh. The stream tab exposes construction decisions alongside spec patches. Provider calls and spec assembly never execute the selected UI actions.
+Name required sections explicitly. For example, request an orders table at the top, revenue/orders/customer metrics in a row, then a weekly revenue chart. The shorter request "a dashboard with the table at the top" can select only a table. Follow-up requests can move an existing table without reconstructing its data.
+
+The code bounds new batches to 14 elements, each request to 14 evaluation calls, nesting depth four, ten seconds per provider request, and 55 seconds overall. The selected seed may contain up to 100 elements. A limit, cancellation, or error retains the current preview and labels it partial. The shared endpoint uses the web app's request rate limiters. Both models edit the selected version; Clear starts fresh. The stream tab exposes construction decisions alongside spec patches. Provider calls and spec assembly never execute the selected UI actions.
 
 Try `Design a user profile card`, then `Remove the bio` or `Make the avatar smaller`. For settings, try `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. The server shares existing display labels and matching candidate descriptions to identify edit targets, without sharing raw state or entered field values. Existing specs must use the supported expression subset and form a valid tree. Edits retain state from the selected spec, as in the default model flow; interactive preview state is not saved into version history.
 
@@ -57,6 +59,7 @@ The server uses Gateway's experimental v4 evaluation transport with model `types
 
 - `grammar.ts`: playground-owned values and atomic candidates.
 - `packages/core/src/experimental-compose.ts`: public provider-independent composer.
+- `packages/core/src/experimental-composition-batch.ts`: parallel membership and layout decisions for new trees.
 - `packages/core/src/experimental-composition-tree.ts`: internal seed validation and tree edit helpers.
 - `packages/core/src/experimental-evaluator.ts`: public Gateway evaluator adapter.
 - `compose.ts`: public API consumer with playground instructions and cost display.

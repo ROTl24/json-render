@@ -425,7 +425,7 @@ export function Playground() {
                 message:
                   streamError?.message ??
                   (streamComposition?.stopReason === "limit"
-                    ? "Evaluation limit reached. The preview is partial."
+                    ? "Composition limit reached. The preview is partial."
                     : streamComposition?.stopReason === "unavailable"
                       ? "This request needs content or capabilities outside the prepared options."
                       : undefined),

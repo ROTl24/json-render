@@ -64,7 +64,7 @@ export function buildCandidates(prompt: string): Candidate[] {
   );
   add(
     "stack_horizontal",
-    "Stack: horizontal row, e.g. side-by-side buttons.",
+    "Stack: horizontal row for two or more explicitly requested side-by-side elements, such as Save and Reset buttons. Not needed for a single button or an ordinary vertical form.",
     "Stack",
     { direction: "horizontal", gap: "sm", align: "center", justify: "start" },
   );
@@ -97,7 +97,7 @@ export function buildCandidates(prompt: string): Candidate[] {
     .entries()) {
     add(
       `heading_${index}`,
-      `Heading with the exact text ${JSON.stringify(text)}.`,
+      `Heading with the exact text ${JSON.stringify(text)}. Include only when this is the requested title or heading; quoted field values and biography text are not headings.`,
       "Heading",
       { text, level: "h2" },
       `text:${text}`,

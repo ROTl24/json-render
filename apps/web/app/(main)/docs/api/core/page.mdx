@@ -26,7 +26,9 @@ const events = experimental_composeSpec({
   initialSpec,         // Optional selected version to edit; never mutated
   elementDescriptions: {}, // Optional descriptions of existing element IDs
   context: {},         // Explicitly shared evaluator context
-  maxSteps: 32,        // Includes finish/unavailable evaluations
+  strategy: "batch",  // Default for new trees; edits are sequential
+  maxElements: 32,     // Batched creation only, includes the root
+  maxSteps: 32,        // Evaluation calls, including terminal decisions
   maxDepth: 8,         // Root depth is one
   signal,              // AbortSignal, optional
   instructions: { root: "", next: "", parent: "" }, // Appended guidance
@@ -35,7 +37,15 @@ const events = experimental_composeSpec({
 
 A candidate has `id`, `description`, `element`, optional `root` (default true), `maxUses` (default one), and `resource` (mutually exclusive variants). IDs start with a letter and contain only letters, digits, underscores, and hyphens. IDs must be unique; `finish` and `unavailable` are reserved. Elements accept `type`, `props`, optional `on`, and `visible`. The composer supplies children and named slots.
 
-Events are full detached snapshots. A `step` contains `spec` and `step`; `complete` contains nullable `spec`, `steps`, `elapsedMs`, nullable `inputTokens`, and `stopReason` (`finish`, `limit`, or `unavailable`). Each trace step contains `index`, `choice`, `description`, nullable `parent`/`slot`, nullable `confidence`/`parentConfidence`, `elapsedMs`, and nullable `inputTokens`. Indexes start at zero. Completion is not a guarantee of semantic correctness.
+Events are full detached snapshots. A `step` contains `spec` and `step`; `complete` contains nullable `spec`, `steps`, `elapsedMs`, nullable `inputTokens`, and `stopReason` (`finish`, `limit`, or `unavailable`). Each trace step contains `index`, `choice`, `description`, nullable `parent`/`slot`, nullable `confidence`/`parentConfidence`, `elapsedMs`, and nullable `inputTokens`. Batched steps also contain `answers`, keyed by question name, with each selected `choice` and optional confidence. Each trace represents one evaluation: batched timing and usage are counted once, not once per answer. Indexes start at zero. Completion is not a guarantee of semantic correctness.
+
+### Batched creation
+
+With no `initialSpec`, `strategy: "batch"` is the default. The first evaluation selects the root and required components together. Shared `resource` variants use one exclusive choice; reusable recipes use bounded counts that include the root when applicable. Root selection takes precedence over speculative membership for the same recipe/resource. The first snapshot includes all selected elements in catalog order under the root's default slot, or its first declared slot when there is no default.
+
+A second evaluation selects parents and sibling positions from the actual selected set. Equal positions retain catalog order. The combined tree must pass catalog, slot, depth, and tree validation before publication; a cycle or invalid layout throws and preserves the first snapshot as partial output. A single root or one child in a single slot needs no layout call. No separate finish call is made.
+
+`maxElements` limits batched creation, including the root. A truncated selection, insufficient depth for selected content, or a call budget that prevents required layout returns `limit`. Use `strategy: "sequential"` for one-operation-at-a-time creation. Edits always use the sequential protocol.
 
 Invalid configuration, out-of-set decisions, provider failures, and aborts throw. Previous snapshots remain usable as partial UI. Stopping iteration prevents further evaluation calls. A supplied signal also stops waiting for an evaluator that ignores cancellation; that evaluator must honor the signal to stop its underlying work.
 
@@ -48,15 +58,15 @@ const evaluate: Experimental_CompositionEvaluator = async ({ state, questions, s
   // Your adapter calls a decision model with this request.
   const result = await yourEvaluator({ state, questions, signal });
   return {
-    answers: result.answers, // { next: { choice: "candidate_id", confidence: 0.9 }, ... }
+    answers: result.answers, // { [questionName]: { choice: "offered_key", confidence: 0.9 } }
     usage: { inputTokens: result.inputTokens }, // Optional
   };
 };
 ```
 
-Questions are records of `type: "choice"`, `instructions`, and `criteria` (choice key to description). `next` selects a candidate, `finish`, or `unavailable`. When multiple attachment points are available, `parent` selects one of the supplied parent/slot keys. Treat these keys as opaque. Confidence must be in [0, 1] when provided; input tokens must be a nonnegative integer.
+Questions are records of `type: "choice"`, `instructions`, and `criteria` (choice key to description). Return an answer for every question and treat question/choice keys as opaque. Batched creation sends `root` and `select_*` questions, then `parent_*` and `order_*` questions. Sequential creation and edits use `next` to select an operation, `finish`, or `unavailable`, with `parent` when several attachment points exist. Existing adapters that only implement `next`/`parent` must opt into `strategy: "sequential"`. Confidence must be in [0, 1] when provided; input tokens must be a nonnegative integer.
 
-State contains `user_request`, `already_built` (IDs, types, descriptions, children, and slots), and explicit app `context`. Candidate descriptions and instructions are shared; raw state/props/binding values are not automatically included. See [validation and v1 limits](/docs/jev#validation-and-v1-limits).
+State contains `user_request` and explicit app `context`, plus capabilities/guidance during batched selection, `selected_elements` during layout, or `already_built` during sequential composition. Candidate descriptions and instructions are shared; raw state/props/binding values are not automatically included. See [validation and v1 limits](/docs/jev#validation-and-v1-limits).
 
 ### Follow-up edits
 
