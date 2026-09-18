@@ -45,8 +45,8 @@ export interface ValidationContextValue {
   clear: (path: string) => void;
   /** Validate all fields */
   validateAll: () => boolean;
-  /** Register field config */
-  registerField: (path: string, config: ValidationConfig) => void;
+  /** Register field config and return its unregister callback */
+  registerField: (path: string, config: ValidationConfig) => () => void;
 }
 
 const ValidationContext = createContext<ValidationContextValue | null>(null);
@@ -61,37 +61,28 @@ export interface ValidationProviderProps {
   children: ReactNode;
 }
 
-/**
- * Compare two DynamicValue args records shallowly.
- * Values are primitives or { $state: string }, so shallow comparison suffices.
- */
-function dynamicArgsEqual(
-  a: Record<string, unknown> | undefined,
-  b: Record<string, unknown> | undefined,
-): boolean {
+/** Compare JSON-like validation config values structurally. */
+function validationValueEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (!a || !b) return false;
+  if (a === null || b === null) return false;
+  if (typeof a !== "object" || typeof b !== "object") return false;
 
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((value, index) => validationValueEqual(value, b[index]));
+  }
+
+  if (Array.isArray(b)) return false;
+
+  const recordA = a as Record<string, unknown>;
+  const recordB = b as Record<string, unknown>;
+  const keysA = Object.keys(recordA);
+  const keysB = Object.keys(recordB);
   if (keysA.length !== keysB.length) return false;
 
   for (const key of keysA) {
-    const va = a[key];
-    const vb = b[key];
-    if (va === vb) continue;
-    // Handle { $state: string } objects
-    if (
-      typeof va === "object" &&
-      va !== null &&
-      typeof vb === "object" &&
-      vb !== null
-    ) {
-      const sa = (va as Record<string, unknown>).$state;
-      const sb = (vb as Record<string, unknown>).$state;
-      if (typeof sa === "string" && sa === sb) continue;
-    }
-    return false;
+    if (!(key in recordB)) return false;
+    if (!validationValueEqual(recordA[key], recordB[key])) return false;
   }
   return true;
 }
@@ -103,25 +94,18 @@ function validationConfigEqual(
   a: ValidationConfig,
   b: ValidationConfig,
 ): boolean {
-  if (a === b) return true;
+  return validationValueEqual(a, b);
+}
 
-  // Compare validateOn
-  if (a.validateOn !== b.validateOn) return false;
-
-  // Compare checks arrays
-  const ac = a.checks ?? [];
-  const bc = b.checks ?? [];
-  if (ac.length !== bc.length) return false;
-
-  for (let i = 0; i < ac.length; i++) {
-    const ca = ac[i]!;
-    const cb = bc[i]!;
-    if (ca.type !== cb.type) return false;
-    if (ca.message !== cb.message) return false;
-    if (!dynamicArgsEqual(ca.args, cb.args)) return false;
+/** Return the config that currently owns validation for a path. */
+function getActiveConfig(
+  registrations: Map<symbol, ValidationConfig>,
+): ValidationConfig | undefined {
+  let active: ValidationConfig | undefined;
+  for (const config of registrations.values()) {
+    active = config;
   }
-
-  return true;
+  return active;
 }
 
 /**
@@ -139,23 +123,65 @@ export function ValidationProvider({
   // Mutable mirror of fieldStates for synchronous reads (e.g. reading errors
   // immediately after validateAll() before React flushes the batched setState).
   const fieldStatesRef = useRef<Record<string, FieldValidationState>>({});
-  const [fieldConfigs, setFieldConfigs] = useState<
-    Record<string, ValidationConfig>
-  >({});
+  // Each mounted control gets its own registration. This lets one control
+  // unregister without disabling another control bound to the same path.
+  const fieldRegistrationsRef = useRef<
+    Map<string, Map<symbol, ValidationConfig>>
+  >(new Map());
+
+  const clear = useCallback((path: string) => {
+    if (!Object.prototype.hasOwnProperty.call(fieldStatesRef.current, path)) {
+      return;
+    }
+    const next = { ...fieldStatesRef.current };
+    delete next[path];
+    fieldStatesRef.current = next;
+    setFieldStates(next);
+  }, []);
 
   const registerField = useCallback(
     (path: string, config: ValidationConfig) => {
-      setFieldConfigs((prev) => {
-        const existing = prev[path];
-        // Bail out (return same reference) if config is unchanged to avoid
-        // infinite re-render loops when callers pass a fresh object each render.
-        if (existing && validationConfigEqual(existing, config)) {
-          return prev;
+      const registrationId = Symbol(path);
+      let registrations = fieldRegistrationsRef.current.get(path);
+      if (!registrations) {
+        registrations = new Map();
+        fieldRegistrationsRef.current.set(path, registrations);
+      }
+
+      const previousActiveConfig = getActiveConfig(registrations);
+      registrations.set(registrationId, config);
+      if (
+        previousActiveConfig &&
+        !validationConfigEqual(previousActiveConfig, config)
+      ) {
+        clear(path);
+      }
+
+      let registered = true;
+      return () => {
+        if (!registered) return;
+        registered = false;
+
+        const currentRegistrations = fieldRegistrationsRef.current.get(path);
+        if (!currentRegistrations?.has(registrationId)) return;
+
+        const removedConfig = currentRegistrations.get(registrationId)!;
+        currentRegistrations.delete(registrationId);
+        const activeConfigAfterRemoval = getActiveConfig(currentRegistrations);
+
+        if (currentRegistrations.size === 0) {
+          fieldRegistrationsRef.current.delete(path);
         }
-        return { ...prev, [path]: config };
-      });
+
+        if (
+          !activeConfigAfterRemoval ||
+          !validationConfigEqual(removedConfig, activeConfigAfterRemoval)
+        ) {
+          clear(path);
+        }
+      };
     },
-    [],
+    [clear],
   );
 
   const validate = useCallback(
@@ -209,16 +235,27 @@ export function ValidationProvider({
     setFieldStates(fieldStatesRef.current);
   }, []);
 
-  const clear = useCallback((path: string) => {
-    const { [path]: _, ...rest } = fieldStatesRef.current;
-    fieldStatesRef.current = rest;
-    setFieldStates(rest);
-  }, []);
-
   const validateAll = useCallback(() => {
     let allValid = true;
 
-    for (const [path, config] of Object.entries(fieldConfigs)) {
+    // Only active registrations belong in a form-wide validation result.
+    // Pruning here is a final safeguard against errors from released fields.
+    const activePaths = new Set(fieldRegistrationsRef.current.keys());
+    const hasStaleStates = Object.keys(fieldStatesRef.current).some(
+      (path) => !activePaths.has(path),
+    );
+    if (hasStaleStates) {
+      fieldStatesRef.current = Object.fromEntries(
+        Object.entries(fieldStatesRef.current).filter(([path]) =>
+          activePaths.has(path),
+        ),
+      );
+      setFieldStates(fieldStatesRef.current);
+    }
+
+    for (const [path, registrations] of fieldRegistrationsRef.current) {
+      const config = getActiveConfig(registrations);
+      if (!config) continue;
       const result = validate(path, config);
       if (!result.valid) {
         allValid = false;
@@ -226,7 +263,7 @@ export function ValidationProvider({
     }
 
     return allValid;
-  }, [fieldConfigs, validate]);
+  }, [validate]);
 
   const value = useMemo<ValidationContextValue>(
     () => ({
@@ -303,12 +340,25 @@ export function useFieldValidation(
     registerField,
   } = useValidation();
 
-  // Register field on mount
+  // Stabilize structurally equal inline configs so unrelated re-renders do not
+  // tear down and recreate a field registration.
+  const stableConfigRef = useRef<ValidationConfig | undefined>(config);
+  if (
+    (config === undefined && stableConfigRef.current !== undefined) ||
+    (config !== undefined &&
+      (stableConfigRef.current === undefined ||
+        !validationConfigEqual(stableConfigRef.current, config)))
+  ) {
+    stableConfigRef.current = config;
+  }
+  const stableConfig = stableConfigRef.current;
+
+  // The returned cleanup releases this control's registration on unmount and
+  // before a binding path or validation config changes.
   React.useEffect(() => {
-    if (path && config) {
-      registerField(path, config);
-    }
-  }, [path, config, registerField]);
+    if (!path || !stableConfig) return;
+    return registerField(path, stableConfig);
+  }, [path, stableConfig, registerField]);
 
   const state = fieldStates[path] ?? {
     touched: false,
@@ -317,8 +367,8 @@ export function useFieldValidation(
   };
 
   const validate = useCallback(
-    () => validateField(path, config ?? { checks: [] }),
-    [path, config, validateField],
+    () => validateField(path, stableConfig ?? { checks: [] }),
+    [path, stableConfig, validateField],
   );
 
   const touch = useCallback(() => touchField(path), [path, touchField]);
