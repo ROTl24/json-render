@@ -117,6 +117,27 @@ for await (const event of experimental_composeSpec({
 
 The adapter uses the plain model ID `typesafe-ai/jev` and Gateway's experimental v4 evaluation endpoint. It has no AI SDK dependency. The default timeout is 10 seconds per evaluation; use `signal` for an overall deadline. See the [core API reference](/docs/api/core#experimental_composespec) for all options.
 
+### Iterate on a version
+
+Pass the selected version as `initialSpec` with the next request:
+
+```typescript
+for await (const event of experimental_composeSpec({
+  catalog,
+  candidates,
+  initialSpec: selectedSpec,
+  prompt: "Remove the Save button",
+  evaluate,
+  signal: AbortSignal.timeout(30_000),
+})) {
+  if (event.spec) updatePreview(event.spec);
+}
+```
+
+Edits can add candidates, replace element recipes, remove non-root subtrees, and move/reorder subtrees. Replacements keep the element's ID, position, and compatible children. Unchanged content, bindings, and state are preserved; the input spec is never mutated. Omit `initialSpec` to start a new composition.
+
+Existing elements use matching candidate descriptions; you can supply `elementDescriptions` keyed by element ID to identify other content. Raw props and state are not shared automatically. Seed specs must be valid trees within the supported catalog and expression subset. Replacement and move operations take two evaluations: select the element, then the recipe or destination. Both count toward the request budget.
+
 ### Render and handle actions
 
 Send `step` events over your app's streaming transport and update the preview with `event.spec`. These are full snapshots, not SpecStream patches. Register `Panel`, `Input`, and `Button` in your existing registry, implement `Input` with `useBoundProp`, and bind the `savePreferences` action to your app's handler. See [the React quickstart](/docs/quick-start) and [state binding](/docs/data-binding).
@@ -129,8 +150,8 @@ The playground is a reference implementation: [candidates and server wrapper](ht
 
 ## Validation and v1 limits
 
-- Candidate props and action parameters are validated against their catalog schemas using `initialState`. Expressions remain intact in the returned spec. Supply valid initial values; schema defaults and transforms are not applied to recipes.
-- V1 supports literal values, `$state`, `$bindState`, and state-based visibility. Repeats, watches, computed expressions, templates, conditional props, custom directives, and prebuilt children are not supported.
+- Candidate props and action parameters are validated against their catalog schemas using `initialState`, or `initialSpec.state` when editing without an explicit override. Expressions remain intact in the returned spec. Supply valid initial values; schema defaults and transforms are not applied to recipes.
+- V1 supports literal values, `$state`, `$bindState`, and state-based visibility. Repeats, watches, computed expressions, templates, conditional props, and custom directives are not supported. Candidate recipes remain atomic; use `initialSpec` for an existing tree.
 - Events must be declared by the component. Actions must be in the catalog or the schema's built-in action list. Built-ins without a parameter schema receive name validation only. Success/error callbacks must reference catalog actions.
 - Runtime state can change after composition. The composer cannot validate future values or authorize a later action invocation.
 - The default budget is 32 evaluations, including the finish decision; default maximum depth is eight. Each candidate is used at most once unless `maxUses` is set. `root: false` excludes it from root selection. A shared `resource` makes candidate variants mutually exclusive.
@@ -144,8 +165,10 @@ The playground offers 15 component types with prepared account/contact fields, v
 
 Select **Jev (Experimental)**, choose **Create account settings**, and send the request. Edit the fields and press **Save changes**. The status changes locally; **Reset** restores the form. Login/contact submission validates inputs and shows a demo toast. The demo does not authenticate users, send messages, or save business records.
 
-Each Jev request starts a new UI; it does not edit the previous version. The default model retains its normal edit flow. The stream tab shows spec patches and decision metadata, and version history labels partial or unavailable results.
+Both model options edit the selected version. After generating settings with Jev, try `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. Select any earlier version to branch from it; Clear starts fresh. New text still needs a prepared candidate or a quoted heading. The playground shares existing display labels to identify edit targets, but does not send entered form values or raw state to Jev. Specs using unsupported expressions cannot be edited by Jev.
 
-The playground limits runs to 14 evaluations, depth four, and 55 seconds overall. Its endpoint uses the web app's minute and daily rate limiters. Self-hosted deployments need `KV_REST_API_URL` and `KV_REST_API_TOKEN` to enable those rate limits.
+The stream tab shows spec patches and decision metadata, and version history labels partial or unavailable results. Requests retain the selected version until edits arrive, including when an edit is unavailable or interrupted.
+
+The playground limits runs to 14 evaluations, depth four, and 55 seconds overall, and accepts selected specs with up to 100 elements. Its endpoint uses the web app's minute and daily rate limiters. Self-hosted deployments need `KV_REST_API_URL` and `KV_REST_API_TOKEN` to enable those rate limits.
 
 References: [Jev on Gateway](https://vercel.com/ai-gateway/models/jev), [AI SDK experimental versioning](https://ai-sdk.dev/docs/migration-guides/versioning), [Jev's documented limits](https://docs.typesafe.ai/model-jaggedness/jev-1.13).

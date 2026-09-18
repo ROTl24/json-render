@@ -99,7 +99,7 @@ function ModelSelector({
       </Select>
       {model === "typesafe-ai/jev" && (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Uses prepared fields and data. Each request creates a new UI.{" "}
+          Uses prepared fields and data. Follow up to edit the selected version.{" "}
           <Link href="/docs/jev" className="underline underline-offset-2">
             About this experiment
           </Link>
@@ -440,12 +440,7 @@ export function Playground() {
     setInputValue("");
 
     // Pass the current tree as context so the API can iterate on it
-    await send(
-      inputValue.trim(),
-      model === "typesafe-ai/jev"
-        ? undefined
-        : { previousSpec: currentTreeRef.current },
-    );
+    await send(inputValue.trim(), { previousSpec: currentTreeRef.current });
   }, [inputValue, isStreaming, send, format, model]);
 
   const handleKeyDown = useCallback(
@@ -698,11 +693,7 @@ ${jsx}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={
-            model === "typesafe-ai/jev"
-              ? "Describe a new UI..."
-              : "Describe changes..."
-          }
+          placeholder="Describe changes..."
           maxLength={model === "typesafe-ai/jev" ? 1000 : undefined}
           className="w-full bg-background text-base sm:text-sm resize-none outline-none placeholder:text-muted-foreground/50"
           rows={2}
@@ -1384,11 +1375,7 @@ ${jsx}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              model === "typesafe-ai/jev"
-                ? "Describe a new UI..."
-                : "Describe changes..."
-            }
+            placeholder="Describe changes..."
             maxLength={model === "typesafe-ai/jev" ? 1000 : undefined}
             className="w-full bg-background text-base resize-none outline-none placeholder:text-muted-foreground/50"
             rows={2}

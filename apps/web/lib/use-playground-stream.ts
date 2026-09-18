@@ -162,10 +162,7 @@ export function usePlaygroundStream({
       rawLinesRef.current = [];
       setRawLines([]);
 
-      const previousSpec =
-        requestModel === "typesafe-ai/jev"
-          ? undefined
-          : (context?.previousSpec as Spec | undefined);
+      const previousSpec = context?.previousSpec as Spec | undefined;
       let currentSpec: Spec =
         previousSpec && previousSpec.root
           ? structuredClone(previousSpec)
@@ -178,7 +175,7 @@ export function usePlaygroundStream({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt,
-            context: requestModel === "typesafe-ai/jev" ? undefined : context,
+            context,
             model: requestModel,
             format: requestFormat,
             editModes: editModesRef.current,

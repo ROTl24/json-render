@@ -42,6 +42,42 @@ async function collect(
 }
 
 describe("Jev catalog composition", () => {
+  it("supports follow-up removal and replacement while preserving the selected version", async () => {
+    const first = (
+      await collect(
+        scripted([
+          { next: "card" },
+          { next: "heading_7" },
+          { next: "input_email" },
+          { next: "notifications_switch" },
+          { next: "finish" },
+        ]),
+      )
+    ).at(-1)!;
+    if (first.type !== "complete") throw new Error("Missing completed spec");
+    const initialSpec = first.spec!;
+    const before = structuredClone(initialSpec);
+    const events: CompositionEvent[] = [];
+    for await (const event of composeUI(
+      'Remove email notifications and change the heading to "Contact us".',
+      new AbortController().signal,
+      scripted([
+        { next: "remove:node_3" },
+        { next: "replace:node_1" },
+        { next: "heading_1" },
+        { next: "finish" },
+      ]),
+      initialSpec,
+    ))
+      events.push(event);
+    const last = events.at(-1)!;
+    if (last.type !== "complete") throw new Error("Missing edited spec");
+    expect(last.spec!.elements.node_1!.props.text).toBe("Contact us");
+    expect(last.spec!.elements).not.toHaveProperty("node_3");
+    expect(last.spec!.elements.node_2).toEqual(initialSpec.elements.node_2);
+    expect(initialSpec).toEqual(before);
+  });
+
   it("composes a new nested tree with state bindings and catalog actions", async () => {
     const events = await collect(
       scripted([

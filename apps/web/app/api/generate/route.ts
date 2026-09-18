@@ -95,7 +95,7 @@ export async function POST(req: Request) {
 
   const { prompt, context, format, editModes, model } = await req.json();
   if (model === "typesafe-ai/jev")
-    return createCompositionResponse(req, prompt);
+    return createCompositionResponse(req, prompt, context?.previousSpec);
   const isYaml = format === "yaml";
 
   const systemPrompt = getSystemPrompt(isYaml, editModes);

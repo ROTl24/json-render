@@ -12,6 +12,51 @@ afterEach(() => {
 });
 
 describe("playground composition response", () => {
+  it("passes the selected spec to the composer and streams patches relative to it", async () => {
+    vi.stubEnv("AI_GATEWAY_API_KEY", "test");
+    const initialSpec: Spec = {
+      root: "card",
+      elements: {
+        card: { type: "Card", props: { title: "Before" }, children: [] },
+      },
+      state: { saved: true },
+    };
+    const spec = structuredClone(initialSpec);
+    spec.elements.card!.props.title = "After";
+    vi.mocked(composeUI).mockImplementation(async function* () {
+      yield {
+        type: "complete",
+        spec,
+        steps: [],
+        stopReason: "finish",
+        elapsedMs: 1,
+        inputTokens: null,
+        estimatedCostUsd: null,
+      };
+    });
+    const response = createCompositionResponse(
+      new Request("https://example.com/api/generate"),
+      "Rename it",
+      initialSpec,
+    );
+    const lines = (await response.text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(vi.mocked(composeUI).mock.calls[0]![3]).toEqual(initialSpec);
+    const patches = lines.filter((line) => line.op);
+    expect(patches).toEqual([
+      { op: "replace", path: "/elements/card/props/title", value: "After" },
+    ]);
+    expect(
+      patches.reduce(
+        (value, patch) => applySpecPatch(value, patch),
+        structuredClone(initialSpec),
+      ),
+    ).toEqual(spec);
+    expect(initialSpec.elements.card!.props.title).toBe("Before");
+  });
+
   it("adapts snapshots to the existing patch stream, including the final decision", async () => {
     vi.stubEnv("AI_GATEWAY_API_KEY", "test");
     const spec: Spec = {
@@ -95,6 +140,12 @@ describe("playground composition response", () => {
   it("validates requests before starting the model", async () => {
     const request = new Request("https://example.com/api/generate");
     expect(createCompositionResponse(request, " ").status).toBe(400);
+    expect(
+      createCompositionResponse(request, "Edit", {
+        root: "card",
+        elements: { card: null },
+      }).status,
+    ).toBe(400);
     vi.stubEnv("AI_GATEWAY_API_KEY", "");
     expect(createCompositionResponse(request, "Create a form").status).toBe(
       503,

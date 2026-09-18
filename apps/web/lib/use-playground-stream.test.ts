@@ -32,11 +32,18 @@ function stream(lines: unknown[], trailingNewline = true) {
 }
 
 describe("playground model streaming", () => {
-  it("uses the shared API for Jev, starts fresh, and retains decisions and completion metadata", async () => {
+  it("uses the selected spec for Jev follow-ups and retains decisions and completion metadata", async () => {
+    const previousSpec = {
+      root: "text",
+      elements: {
+        text: { type: "Text", props: { text: "Before" }, children: [] },
+      },
+      state: { saved: true },
+    };
     const fetch = vi.fn(async () =>
       stream(
         [
-          ...patches,
+          { op: "replace", path: "/elements/text/props/text", value: "After" },
           { __meta: "decision", choice: "text" },
           {
             __meta: "composition",
@@ -58,27 +65,27 @@ describe("playground model streaming", () => {
         format: "yaml",
       }),
     );
-    await act(async () =>
-      result.current.send("Create UI", {
-        previousSpec: { root: "old", elements: { old: {} } },
-      }),
-    );
+    await act(async () => result.current.send("Edit UI", { previousSpec }));
     const call = fetch.mock.calls[0] as unknown as [string, RequestInit];
     expect(call[0]).toBe("/api/generate");
     expect(JSON.parse(call[1].body as string)).toMatchObject({
       model: "typesafe-ai/jev",
       format: "jsonl",
     });
-    expect(JSON.parse(call[1].body as string)).not.toHaveProperty("context");
-    expect(result.current.spec?.elements).not.toHaveProperty("old");
+    expect(JSON.parse(call[1].body as string).context.previousSpec).toEqual(
+      previousSpec,
+    );
     expect(result.current.spec?.root).toBe("text");
+    expect(result.current.spec?.elements.text?.props.text).toBe("After");
+    expect(previousSpec.elements.text.props.text).toBe("Before");
+    expect(result.current.spec?.state).toEqual(previousSpec.state);
     expect(result.current.composition).toMatchObject({
       stopReason: "finish",
       calls: 2,
       inputTokens: null,
     });
     expect(result.current.usage).toBeNull();
-    expect(result.current.rawLines).toHaveLength(4);
+    expect(result.current.rawLines).toHaveLength(3);
   });
 
   it("keeps default-model editing and usage working", async () => {

@@ -1,6 +1,6 @@
 # Jev composing catalog UI
 
-Open **`/playground`** and select **Jev (Experimental)** in the model selector. This experiment starts with an empty spec and uses Jev through Vercel AI Gateway to compose a new tree. It renders with the **actual playground catalog and registry**, including the existing shadcn components, state bindings, validation, and action handlers.
+Open **`/playground`** and select **Jev (Experimental)** in the model selector. This experiment uses Jev through Vercel AI Gateway to compose a tree and edit it in follow-up requests. It renders with the **actual playground catalog and registry**, including the existing shadcn components, state bindings, validation, and action handlers.
 
 ## Run
 
@@ -20,12 +20,13 @@ Select Jev, choose Create account settings, and send the request. Edit the name,
 
 Jev exposes Choice, Boolean, and Score outputs. It does not produce free-form JSON or prose. We express UI construction as a sequence of finite choices:
 
-1. Begin with an empty spec and platform state.
+1. Begin with the selected version, or an empty spec and platform state for the first request.
 2. Offer allowed catalog operations, such as adding an email Input with a state binding, a Grid with three columns, or a Button bound to `formSubmit`.
 3. Jev chooses the next operation and an existing container to receive it. Once multiple parents exist, the two choices are returned in the same evaluation call.
 4. Code resolves the chosen operation into an element, assigns its ID, adds the tree edge, and validates the result against the catalog and initial state. Action names, events, and parameters are also checked.
 5. Stream the valid spec to the existing renderer. Feed a compact description of the constructed tree into the next evaluation.
-6. Stop when Jev chooses `finish` or `unavailable`, or the code reaches its element/call limit.
+6. On follow-ups, also offer replacement, removal, and move/reorder operations. Replacements and moves select a target, then choose a valid recipe or destination in a second evaluation. Preserve unchanged elements and earlier versions.
+7. Stop when Jev chooses `finish` or `unavailable`, or the code reaches its evaluation limit.
 
 There are **no complete UI templates** and no generative-model calls. The example prompt buttons only populate the request text. Jev chooses which elements to include, their order, grouping, and which offered action bindings to use. The registry owns appearance and behavior.
 
@@ -45,7 +46,9 @@ These are **atomic element candidates**, not page templates. A host application 
 
 The composer validates tree structure and candidate values; it does not guarantee that Jev chose the right UI. Root selection, grouping, and deciding when to stop require planning, which is a documented weakness of Jev. Confidence is displayed without a quality gate: multiple layout choices may be reasonable, and a universal threshold has not been calibrated.
 
-The code bounds composition to 14 elements / evaluation calls, nesting depth four, ten seconds per provider request, and 55 seconds overall. A limit, cancellation, or error leaves a visibly partial preview. The shared endpoint uses the web app's request rate limiters. Each Jev request starts from an empty spec; select the default model for iterative edits. The stream tab exposes construction decisions alongside spec patches. Provider calls and spec assembly never execute the selected UI actions.
+The code bounds each request to 14 evaluation calls, nesting depth four, ten seconds per provider request, and 55 seconds overall. The selected seed may contain up to 100 elements. A limit, cancellation, or error retains the current preview and labels it partial. The shared endpoint uses the web app's request rate limiters. Both models edit the selected version; Clear starts fresh. The stream tab exposes construction decisions alongside spec patches. Provider calls and spec assembly never execute the selected UI actions.
+
+Try follow-ups such as `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. The server shares existing display labels to identify edit targets, without sharing raw state or entered field values. Existing specs must use the supported expression subset and form a valid tree. Edits retain state from the selected spec, as in the default model flow; interactive preview state is not saved into version history.
 
 
 ## Transport and files
@@ -54,6 +57,7 @@ The server uses Gateway's experimental v4 evaluation transport with model `types
 
 - `grammar.ts`: playground-owned values and atomic candidates.
 - `packages/core/src/experimental-compose.ts`: public provider-independent composer.
+- `packages/core/src/experimental-composition-tree.ts`: internal seed validation and tree edit helpers.
 - `packages/core/src/experimental-evaluator.ts`: public Gateway evaluator adapter.
 - `compose.ts`: public API consumer with playground instructions and cost display.
 - `../../app/api/generate/route.ts`: shared rate-limited endpoint, dispatching the selected model.

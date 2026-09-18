@@ -23,6 +23,8 @@ const events = experimental_composeSpec({
   prompt,              // User request
   evaluate,            // Experimental_CompositionEvaluator
   initialState: {},    // Included in spec; not sent to evaluator
+  initialSpec,         // Optional selected version to edit; never mutated
+  elementDescriptions: {}, // Optional descriptions of existing element IDs
   context: {},         // Explicitly shared evaluator context
   maxSteps: 32,        // Includes finish/unavailable evaluations
   maxDepth: 8,         // Root depth is one
@@ -55,6 +57,14 @@ const evaluate: Experimental_CompositionEvaluator = async ({ state, questions, s
 Questions are records of `type: "choice"`, `instructions`, and `criteria` (choice key to description). `next` selects a candidate, `finish`, or `unavailable`. When multiple attachment points are available, `parent` selects one of the supplied parent/slot keys. Treat these keys as opaque. Confidence must be in [0, 1] when provided; input tokens must be a nonnegative integer.
 
 State contains `user_request`, `already_built` (IDs, types, descriptions, children, and slots), and explicit app `context`. Candidate descriptions and instructions are shared; raw state/props/binding values are not automatically included. See [validation and v1 limits](/docs/jev#validation-and-v1-limits).
+
+### Follow-up edits
+
+Pass `initialSpec` to edit an existing version. The composer validates and clones it, preserving unchanged elements, IDs, action bindings, and state. `initialState` explicitly overrides `initialSpec.state` when provided. Optional `elementDescriptions` maps existing IDs to descriptions shared with the evaluator; matching candidates supply the default description, otherwise only the component type is shared.
+
+Editing adds bounded operations: replace an element with an offered recipe, remove a non-root subtree, and move/reorder a subtree to an allowed slot/position. Replacements preserve children and are offered only when the new component can contain them. Moves cannot create cycles or exceed the depth limit. Seed specs with cycles, shared children, missing references, unreachable nodes, or unsupported expressions are rejected before evaluation.
+
+The `next` question offers opaque operation keys as well as candidate IDs. For replacement or movement, the following evaluation selects a recipe or destination, also through `next`. Both calls count toward `maxSteps`; the first emits an unchanged snapshot with its decision trace. `changes_made` supplies the edit trace alongside `already_built`. A budget limit, unavailable result, or cancellation may leave a selected edit unapplied. Existing elements exactly matching a recipe count toward `maxUses` and `resource`; removing/replacing them releases those limits.
 
 ## experimental_createEvaluator
 

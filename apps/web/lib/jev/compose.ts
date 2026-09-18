@@ -4,6 +4,7 @@ import {
   type Experimental_CompositionEvaluator,
   type Experimental_CompositionEvent,
   type Experimental_CompositionStep,
+  type Spec,
 } from "@json-render/core";
 import { playgroundCatalog } from "../render/catalog";
 import { buildCandidates, MAX_ELEMENTS, platformState } from "./grammar";
@@ -25,11 +26,30 @@ export async function* composeUI(
     model: "typesafe-ai/jev",
     apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
   }),
+  initialSpec?: Spec,
 ): AsyncGenerator<CompositionEvent> {
   for await (const event of experimental_composeSpec({
     catalog: playgroundCatalog,
     candidates: buildCandidates(prompt),
-    initialState: platformState,
+    initialSpec,
+    initialState: { ...platformState, ...initialSpec?.state },
+    // Share display copy needed to identify an existing element, never field
+    // values, raw binding recipes, action params, or renderer state.
+    elementDescriptions:
+      initialSpec &&
+      Object.fromEntries(
+        Object.entries(initialSpec.elements).map(([id, element]) => [
+          id,
+          [
+            element.type,
+            ...["title", "text", "label", "name", "direction"].flatMap((key) =>
+              typeof element.props[key] === "string"
+                ? [`${key}: ${JSON.stringify(element.props[key])}`]
+                : [],
+            ),
+          ].join("; "),
+        ]),
+      ),
     prompt,
     signal,
     evaluate,
