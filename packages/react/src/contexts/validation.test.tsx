@@ -74,14 +74,20 @@ function TestForm({ showFirst }: { showFirst: boolean }) {
   );
 }
 
-function LocallyValidatedSharedPathForm({ showFirst }: { showFirst: boolean }) {
+function LocallyValidatedSharedPathForm({
+  showFirst,
+  showActive = true,
+}: {
+  showFirst: boolean;
+  showActive?: boolean;
+}) {
   return (
     <StateProvider initialState={{ form: { name: "" } }}>
       <ValidationProvider>
         {showFirst && (
           <ValidatingField testId="first" config={requiredConfig} />
         )}
-        <Field testId="active" config={emailConfig} />
+        {showActive && <Field testId="active" config={emailConfig} />}
       </ValidationProvider>
     </StateProvider>
   );
@@ -128,5 +134,19 @@ describe("ValidationProvider registrations", () => {
     view.rerender(<LocallyValidatedSharedPathForm showFirst={false} />);
 
     expect(screen.getByTestId("active").textContent).toBe("");
+  });
+
+  it("preserves errors owned by the fallback active registration", () => {
+    const view = render(<LocallyValidatedSharedPathForm showFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate first" }));
+    expect(screen.getByTestId("first").textContent).toBe("Name is required");
+    expect(screen.getByTestId("active").textContent).toBe("Name is required");
+
+    view.rerender(
+      <LocallyValidatedSharedPathForm showFirst showActive={false} />,
+    );
+
+    expect(screen.getByTestId("first").textContent).toBe("Name is required");
   });
 });

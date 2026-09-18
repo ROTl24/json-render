@@ -232,6 +232,17 @@ export function ValidationProvider({
         const fieldStateConfigWasReleased =
           fieldStateConfig !== undefined &&
           !hasRegisteredConfig(currentRegistrations, fieldStateConfig);
+        const activeConfigChanged =
+          activeConfigBeforeRemoval === undefined ||
+          activeConfigAfterRemoval === undefined ||
+          !validationConfigEqual(
+            activeConfigBeforeRemoval,
+            activeConfigAfterRemoval,
+          );
+        const fieldStateMatchesActiveConfig =
+          fieldStateConfig !== undefined &&
+          activeConfigAfterRemoval !== undefined &&
+          validationConfigEqual(fieldStateConfig, activeConfigAfterRemoval);
 
         if (currentRegistrations.size === 0) {
           fieldRegistrationsRef.current.delete(path);
@@ -239,12 +250,8 @@ export function ValidationProvider({
 
         if (
           !activeConfigAfterRemoval ||
-          !activeConfigBeforeRemoval ||
-          !validationConfigEqual(
-            activeConfigBeforeRemoval,
-            activeConfigAfterRemoval,
-          ) ||
-          fieldStateConfigWasReleased
+          fieldStateConfigWasReleased ||
+          (activeConfigChanged && !fieldStateMatchesActiveConfig)
         ) {
           clear(path);
         }
