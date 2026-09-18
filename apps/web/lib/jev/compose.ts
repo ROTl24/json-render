@@ -24,7 +24,7 @@ export async function* composeUI(
   signal: AbortSignal,
   evaluate: Evaluate = experimental_createEvaluator({
     model: "typesafe-ai/jev",
-    apiKey: process.env.AI_GATEWAY_API_KEY ?? "",
+    apiKey: process.env.JEV_AI_GATEWAY_API_KEY ?? "",
   }),
   initialSpec?: Spec,
 ): AsyncGenerator<CompositionEvent> {

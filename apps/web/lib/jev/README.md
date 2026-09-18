@@ -4,7 +4,7 @@ Open **`/playground`** and select **jev** in the **default / jev** toggle. Hover
 
 ## Run
 
-Set `AI_GATEWAY_API_KEY` in `apps/web/.env.local` or the server environment. The Gateway team must permit the `typesafe-ai` provider. No separate TypeSafe API key is required.
+Set `JEV_AI_GATEWAY_API_KEY` in `apps/web/.env.local` or the server environment. The playground uses this dedicated Gateway key for Jev; the default model continues to use `AI_GATEWAY_API_KEY`. Jev does not fall back to the default model's key. The Gateway team must permit the `typesafe-ai` provider. No separate TypeSafe API key is required.
 
 From the repository root:
 

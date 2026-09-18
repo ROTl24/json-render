@@ -45,7 +45,7 @@ export function createCompositionResponse(
       { status: 400 },
     );
   const initialSpec = previous?.success ? (previous.data as Spec) : undefined;
-  if (!process.env.AI_GATEWAY_API_KEY?.trim())
+  if (!process.env.JEV_AI_GATEWAY_API_KEY?.trim())
     return Response.json(
       {
         error:
