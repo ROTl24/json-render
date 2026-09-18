@@ -255,7 +255,7 @@ const { errors, validate } = useFieldValidation("/form/email", {
 });
 ```
 
-Only mounted controls with a binding path and validation configuration participate in form-wide validation. Unmounting a control, changing its binding, or removing its validation configuration clears that path's validation errors without deleting its stored value.
+Controls registered through `useFieldValidation` participate in form-wide validation while they are mounted with a binding path and validation configuration. Unmounting one of these controls, changing its binding, or removing its validation configuration clears that path's validation errors without deleting its stored value. Direct calls to `useValidation().registerField()` create a durable registration that remains for the lifetime of the `ValidationProvider`.
 
 ## Hooks
 
