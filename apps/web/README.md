@@ -16,6 +16,10 @@ bun dev
 
 Open [http://json-render.localhost:1355](http://json-render.localhost:1355) with your browser to see the result.
 
+## Jev composition experiment
+
+The **Jev (Experimental)** model option in `/playground` is a reference consumer of core's reusable `experimental_composeSpec` and `experimental_createEvaluator` APIs. It lets Jev compose new UI trees from the playground's component catalog and allowed action bindings through Vercel AI Gateway. Set `AI_GATEWAY_API_KEY` on the server. It uses the same prompt input, version history, spec/stream inspectors, and functional preview as the default model. The shared `/api/generate` endpoint streams spec patches and decision metadata. See [setup, architecture, and observed limits](lib/jev/README.md).
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load Inter, a custom Google Font.

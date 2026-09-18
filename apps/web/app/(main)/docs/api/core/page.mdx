@@ -5,6 +5,74 @@ export const metadata = pageMetadata("docs/api/core")
 
 Core types, schemas, and utilities.
 
+## experimental_composeSpec
+
+**Experimental, unreleased:** may change in any release. Pin exact versions when published; see [source-build setup and the full Jev guide](/docs/jev).
+
+```typescript
+import {
+  experimental_composeSpec,
+  type Experimental_CompositionCandidate,
+  type Experimental_CompositionEvaluator,
+  type Experimental_CompositionEvent,
+} from "@json-render/core";
+
+const events = experimental_composeSpec({
+  catalog,             // Standard flat Spec catalog
+  candidates,          // App-owned atomic elements
+  prompt,              // User request
+  evaluate,            // Experimental_CompositionEvaluator
+  initialState: {},    // Included in spec; not sent to evaluator
+  context: {},         // Explicitly shared evaluator context
+  maxSteps: 32,        // Includes finish/unavailable evaluations
+  maxDepth: 8,         // Root depth is one
+  signal,              // AbortSignal, optional
+  instructions: { root: "", next: "", parent: "" }, // Appended guidance
+});
+```
+
+A candidate has `id`, `description`, `element`, optional `root` (default true), `maxUses` (default one), and `resource` (mutually exclusive variants). IDs start with a letter and contain only letters, digits, underscores, and hyphens. IDs must be unique; `finish` and `unavailable` are reserved. Elements accept `type`, `props`, optional `on`, and `visible`. The composer supplies children and named slots.
+
+Events are full detached snapshots. A `step` contains `spec` and `step`; `complete` contains nullable `spec`, `steps`, `elapsedMs`, nullable `inputTokens`, and `stopReason` (`finish`, `limit`, or `unavailable`). Each trace step contains `index`, `choice`, `description`, nullable `parent`/`slot`, nullable `confidence`/`parentConfidence`, `elapsedMs`, and nullable `inputTokens`. Indexes start at zero. Completion is not a guarantee of semantic correctness.
+
+Invalid configuration, out-of-set decisions, provider failures, and aborts throw. Previous snapshots remain usable as partial UI. Stopping iteration prevents further evaluation calls. A supplied signal also stops waiting for an evaluator that ignores cancellation; that evaluator must honor the signal to stop its underlying work.
+
+### Custom evaluators
+
+The composer is provider independent. An evaluator receives `state`, `questions`, and `signal`, then returns a selected criteria key for each question:
+
+```typescript
+const evaluate: Experimental_CompositionEvaluator = async ({ state, questions, signal }) => {
+  // Your adapter calls a decision model with this request.
+  const result = await yourEvaluator({ state, questions, signal });
+  return {
+    answers: result.answers, // { next: { choice: "candidate_id", confidence: 0.9 }, ... }
+    usage: { inputTokens: result.inputTokens }, // Optional
+  };
+};
+```
+
+Questions are records of `type: "choice"`, `instructions`, and `criteria` (choice key to description). `next` selects a candidate, `finish`, or `unavailable`. When multiple attachment points are available, `parent` selects one of the supplied parent/slot keys. Treat these keys as opaque. Confidence must be in [0, 1] when provided; input tokens must be a nonnegative integer.
+
+State contains `user_request`, `already_built` (IDs, types, descriptions, children, and slots), and explicit app `context`. Candidate descriptions and instructions are shared; raw state/props/binding values are not automatically included. See [validation and v1 limits](/docs/jev#validation-and-v1-limits).
+
+## experimental_createEvaluator
+
+**Experimental:** creates a server-side evaluator using Vercel AI Gateway's experimental v4 evaluation transport. No AI SDK dependency or provider constructor is required.
+
+```typescript
+import { experimental_createEvaluator } from "@json-render/core";
+
+const evaluate = experimental_createEvaluator({
+  apiKey: process.env.AI_GATEWAY_API_KEY!, // Required; keep server-side
+  model: "typesafe-ai/jev",               // Required, plain Gateway evaluation model ID
+  timeoutMs: 10_000,                      // Default, per evaluation
+  fetch: globalThis.fetch,               // Optional transport override
+});
+```
+
+The factory uses model-neutral naming and requires an explicit model. Jev is the current tested example; other models must support the Gateway choice-evaluation protocol. When using Jev, the Gateway team must permit TypeSafe AI. The adapter reports HTTP status on failure and rejects malformed/unoffered decisions. For Jev, it normalizes TypeSafe's native confidence rather than treating option probability as confidence. Confidence from other provider metadata is not yet normalized. Missing confidence and usage remain unknown. It does not retry automatically or estimate cost.
+
 ## defineCatalog
 
 Creates a type-safe catalog definition with schema validation.

@@ -14,6 +14,21 @@ Core package for schema definition, catalog creation, and spec streaming.
 - **Spec**: JSON output from AI that conforms to the schema
 - **SpecStream**: JSONL streaming format for progressive spec building
 
+## Experimental Decision-Model Composition
+
+For decision-model composition, import `experimental_composeSpec` and `experimental_createEvaluator` from `@json-render/core`. These APIs are unreleased; use a source build until published, then pin exact versions. Experimental exports and `Experimental_` types can change in any release.
+
+- Run the Gateway evaluator server-side with `{ model: "typesafe-ai/jev", apiKey: process.env.AI_GATEWAY_API_KEY! }`. A plain model identifier is required; Jev is the current example; do not import a provider constructor.
+- Call `experimental_composeSpec({ catalog, candidates, prompt, evaluate, initialState, signal })`. It is an async generator; stream `step.spec` snapshots to your existing renderer and inspect `complete.stopReason` (`finish`, `limit`, `unavailable`). Errors and cancellation throw; retain the last snapshot as partial UI.
+- Supply atomic candidates with `{ id, description, element: { type, props, on?, visible? }, root?, maxUses?, resource? }`. Catalog alone is insufficient: the app must supply values and binding recipes. Jev chooses elements and parent slots, never free-form text or code. It never executes actions.
+- V1 supports flat Spec catalogs, named slots, literals, `$state`, `$bindState`, and state visibility. No prebuilt children, repeat/watch, computed/template/conditional props, or custom directives. Success/error callbacks must reference allowed actions. Events must be declared in the component catalog.
+- Props and action params are validated against initial state without applying schema transforms/defaults. Supply valid initial values and validate/authorize action calls at runtime. Built-ins without parameter schemas get name validation only.
+- `root` defaults true, `maxUses` defaults one, shared `resource` values make alternatives mutually exclusive. Defaults: 32 evaluations including finish, depth eight, 10-second Gateway timeout per call. Supply an overall abort signal.
+- Candidate descriptions, prompt, instructions, topology, and explicit `context` are sent to the evaluator. Initial state and raw props/binding values are not sent automatically.
+- For custom providers implement `Experimental_CompositionEvaluator`: accept `{ state, questions, signal }`, return `{ answers: { [question]: { choice, confidence? } }, usage?: { inputTokens? } }`. Only return offered criteria keys.
+
+See `packages/core/README.md` and `/docs/jev` for app integration and source-build instructions. The web playground is an example consumer, not a dependency of the API.
+
 ## Defining a Schema
 
 ```typescript

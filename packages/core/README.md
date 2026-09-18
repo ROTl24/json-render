@@ -8,6 +8,46 @@ Core library for json-render. Define schemas, create catalogs, generate AI promp
 npm install @json-render/core zod
 ```
 
+## Experimental decision-model composition
+
+`experimental_composeSpec` builds a flat `Spec` by choosing among your app's atomic element candidates. `experimental_createEvaluator` connects a choice evaluation model through Vercel AI Gateway. Jev (`typesafe-ai/jev`) is the current example; the API names and explicit `model` option are model-neutral. Use your own catalog, props, state bindings, action bindings, and renderer; no playground components are required.
+
+**Unreleased:** try a source build before the next package release. APIs prefixed with `experimental_` or `Experimental_` may change in any release. Pin exact versions and review release notes before upgrading.
+
+```typescript
+// Server only
+import { experimental_composeSpec, experimental_createEvaluator } from "@json-render/core";
+import { catalog } from "./catalog";
+import { candidates } from "./candidates";
+
+const evaluate = experimental_createEvaluator({
+  model: "typesafe-ai/jev",
+  apiKey: process.env.AI_GATEWAY_API_KEY!,
+});
+
+for await (const event of experimental_composeSpec({
+  catalog,
+  candidates,
+  prompt: "Create account preferences with a name field and Save button",
+  initialState: { name: "" },
+  evaluate,
+  maxSteps: 12,
+  signal: AbortSignal.timeout(30_000),
+})) {
+  // Send snapshots to your client and render using your existing registry.
+  if (event.type === "step") console.log(event.spec);
+  else console.log(event.stopReason, event.spec);
+}
+```
+
+Candidates contain `id`, `description`, and an atomic `element` (`type`, `props`, optional `on` and `visible`). `root: false` excludes a candidate from root selection; `maxUses` defaults to one; candidates sharing a `resource` are mutually exclusive. The catalog's slots determine where children can be attached. Props and action parameters are checked against initial state; expressions remain live in the output. Actions are never executed by the composer.
+
+The async generator emits detached `step` snapshots and a `complete` event with `stopReason: "finish" | "limit" | "unavailable"`, decision traces, timing, and nullable input usage. Completion can include a partial spec or no spec. Provider errors, invalid choices, and cancellation throw. Defaults: 32 evaluations, depth eight, and a 10-second per-call Gateway timeout.
+
+V1 supports standard flat Spec catalogs, literals, `$state`, `$bindState`, state-based visibility, and named slots. It excludes repeat/watch, computed/custom expressions, and prebuilt subtrees. Bindings must resolve to valid values in `initialState`; handlers must still validate later user input. Candidate descriptions and explicit `context` are sent to the evaluator; state values and raw props/bindings are not sent automatically.
+
+See the [Jev guide](https://json-render.dev/docs/jev) for complete catalog/candidate examples, source-build installation, rendering, custom evaluators, limitations, and feedback. The [playground implementation](../../apps/web/lib/jev) uses these same APIs.
+
 ## Key Concepts
 
 - **Schema**: Defines the structure of specs and catalogs
