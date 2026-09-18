@@ -18,6 +18,14 @@ const fieldValues = {
 export const platformState = {
   form: fieldValues,
   status: "No changes saved yet.",
+  profile: {
+    name: "Maya Chen",
+    role: "Product designer",
+    bio: "Designing thoughtful tools that make everyday work simpler.",
+    email: "maya@example.com",
+    location: "Portland, OR",
+    membership: "Pro member",
+  },
 };
 
 /** Prop values are platform content, never model-invented strings or code. */
@@ -95,6 +103,43 @@ export function buildCandidates(prompt: string): Candidate[] {
       `text:${text}`,
     );
   }
+  for (const size of ["lg", "md", "sm"] as const) {
+    add(
+      `profile_avatar_${size}`,
+      `Avatar: ${size === "lg" ? "large" : size === "md" ? "medium" : "small"} profile avatar with initials from the user's name. Use large for a profile card unless another size is requested.`,
+      "Avatar",
+      { src: null, name: { $state: "/profile/name" }, size },
+      "data:profile_avatar",
+    );
+  }
+  add(
+    "profile_name",
+    "Heading: display the user's profile name as read-only text.",
+    "Heading",
+    { text: { $state: "/profile/name" }, level: "h2" },
+    "data:profile_name",
+  );
+  for (const [field, description, variant] of [
+    ["role", "job title or role", "lead"],
+    ["bio", "short biography or about text", "body"],
+    ["email", "email address", "muted"],
+    ["location", "location", "muted"],
+  ] as const) {
+    add(
+      `profile_${field}`,
+      `Text: display the user's profile ${description} as read-only text.`,
+      "Text",
+      { text: { $state: `/profile/${field}` }, variant },
+      `data:profile_${field}`,
+    );
+  }
+  add(
+    "profile_membership",
+    "Badge: display the user's profile membership status.",
+    "Badge",
+    { text: { $state: "/profile/membership" }, variant: "default" },
+    "data:profile_membership",
+  );
   for (const [name, label, type] of [
     ["name", "Full name", "text"],
     ["email", "Email", "email"],

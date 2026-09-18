@@ -42,6 +42,68 @@ async function collect(
 }
 
 describe("Jev catalog composition", () => {
+  it("composes profile display content and identifies bound content for follow-up edits", async () => {
+    const events: CompositionEvent[] = [];
+    for await (const event of composeUI(
+      "Design a user profile card",
+      new AbortController().signal,
+      scripted([
+        { next: "card" },
+        { next: "profile_avatar_lg" },
+        { next: "profile_name" },
+        { next: "profile_role" },
+        { next: "profile_bio" },
+        { next: "finish" },
+      ]),
+    ))
+      events.push(event);
+    const first = events.at(-1)!;
+    if (first.type !== "complete") throw new Error("Missing profile spec");
+    const initialSpec = first.spec!;
+    expect(
+      Object.values(initialSpec.elements).map((element) => element.type),
+    ).toEqual(["Card", "Avatar", "Heading", "Text", "Text"]);
+    expect(initialSpec.elements.node_2!.props.text).toEqual({
+      $state: "/profile/name",
+    });
+    expect(initialSpec.state?.profile).toMatchObject({ name: "Maya Chen" });
+
+    // Editing must identify a bound Text by its meaning without sending its value.
+    initialSpec.state!.profile = {
+      ...(initialSpec.state!.profile as Record<string, unknown>),
+      bio: "Private profile biography",
+    };
+    const before = structuredClone(initialSpec);
+    const choose = scripted([{ next: "remove:node_4" }, { next: "finish" }]);
+    let calls = 0;
+    for await (const event of composeUI(
+      "Remove the bio",
+      new AbortController().signal,
+      async (request) => {
+        if (calls++ === 0) {
+          expect(request.questions.next!.criteria["remove:node_4"]).toContain(
+            "biography",
+          );
+          expect(request.questions.next!.criteria["remove:node_3"]).toContain(
+            "job title or role",
+          );
+        }
+        expect(JSON.stringify(request)).not.toContain(
+          "Private profile biography",
+        );
+        return choose(request);
+      },
+      initialSpec,
+    ))
+      events.push(event);
+    const edited = events.at(-1)!;
+    if (edited.type !== "complete") throw new Error("Missing edited profile");
+    expect(edited.spec!.elements).not.toHaveProperty("node_4");
+    expect(edited.spec!.elements.node_3).toEqual(initialSpec.elements.node_3);
+    expect(edited.spec!.state).toEqual(initialSpec.state);
+    expect(initialSpec).toEqual(before);
+  });
+
   it("supports follow-up removal and replacement while preserving the selected version", async () => {
     const first = (
       await collect(

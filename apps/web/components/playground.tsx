@@ -306,6 +306,10 @@ const JEV_EXAMPLE_PROMPTS = [
       'Create an account settings card titled "Preferences" with full name, email, an email notifications switch, save and reset buttons side by side, and visible save status.',
   },
   {
+    label: "Design a user profile card",
+    prompt: "Design a user profile card",
+  },
+  {
     label: "Build a sales dashboard",
     prompt:
       'Build a sales dashboard: heading "Sales overview", revenue, orders and new customers metrics in a three-column grid, then a weekly revenue chart and an order-status table.',

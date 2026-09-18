@@ -38,17 +38,24 @@ export async function* composeUI(
     elementDescriptions:
       initialSpec &&
       Object.fromEntries(
-        Object.entries(initialSpec.elements).map(([id, element]) => [
-          id,
-          [
-            element.type,
-            ...["title", "text", "label", "name", "direction"].flatMap((key) =>
-              typeof element.props[key] === "string"
-                ? [`${key}: ${JSON.stringify(element.props[key])}`]
-                : [],
-            ),
-          ].join("; "),
-        ]),
+        Object.entries(initialSpec.elements).flatMap(([id, element]) => {
+          const labels = [
+            "title",
+            "text",
+            "label",
+            "name",
+            "direction",
+          ].flatMap((key) =>
+            typeof element.props[key] === "string"
+              ? [`${key}: ${JSON.stringify(element.props[key])}`]
+              : [],
+          );
+          // Let the composer use the matching candidate's description for
+          // bound content, so edits can distinguish e.g. profile bio and email.
+          return labels.length
+            ? [[id, [element.type, ...labels].join("; ")]]
+            : [];
+        }),
       ),
     prompt,
     signal,
@@ -57,11 +64,11 @@ export async function* composeUI(
     maxDepth: 4,
     context: {
       platform:
-        "Available: account/contact fields (name, email, password, message, topic, remember-me, notifications); form submit/save/reset demo actions; synthetic sales revenue, orders, customers, a weekly revenue chart, and order-status table. Quoted titles may be copied from the request. Actions run on later user interaction. Submission is a validation/toast demo, not an authentication or messaging service.",
+        "Available: a synthetic user profile (avatar, display name, role, biography, email, location, membership badge); account/contact fields (name, email, password, message, topic, remember-me, notifications); form submit/save/reset demo actions; synthetic sales revenue, orders, customers, a weekly revenue chart, and order-status table. Quoted titles may be copied from the request. Actions run on later user interaction. Submission is a validation/toast demo, not an authentication or messaging service.",
     },
     instructions: {
-      root: "Use Card for a compact form. Use vertical Stack for a page with a heading and several sections, including a dashboard containing a metric row followed by charts or tables. Use Grid as root only when the entire page is one uniform grid of peers.",
-      next: "Before adding a requested side-by-side group, add its Grid or horizontal Stack if missing. Add only requested content or conventional essentials (login needs email, password, and submit). Prefer a compact tree.",
+      root: "Use Card for a compact form or profile card. Use vertical Stack for a page with a heading and several sections, including a dashboard containing a metric row followed by charts or tables. Use Grid as root only when the entire page is one uniform grid of peers.",
+      next: "Before adding a requested side-by-side group, add its Grid or horizontal Stack if missing. Add only requested content or conventional essentials (login needs email, password, and submit; a profile card displays avatar, name, role, and bio). Use display elements for viewing data and form fields when the user asks to enter or edit data. Prefer a compact tree.",
       parent:
         "Never put headings or form fields inside a horizontal button row. Choose the root for a new top-level section.",
     },

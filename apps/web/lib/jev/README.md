@@ -36,8 +36,8 @@ The loop resembles autoregressive generation at the level of catalog operations.
 
 A component catalog bounds component names, props, and events, but string and array props still have open-ended values. This example closes that remaining space with platform-owned content and binding recipes:
 
-- 15 component types from the playground catalog: Card, Stack, Grid, Heading, Input, Textarea, Select, Checkbox, Switch, Button, Text, Metric, BarGraph, Table, and Separator.
-- Form fields, validation rules, labels, synthetic commerce data, and two allowed catalog actions (`formSubmit` and `setState`).
+- 17 component types from the playground catalog: Card, Stack, Grid, Heading, Avatar, Badge, Input, Textarea, Select, Checkbox, Switch, Button, Text, Metric, BarGraph, Table, and Separator.
+- Form fields, validation rules, labels, synthetic profile and commerce data, and two allowed catalog actions (`formSubmit` and `setState`). Profile choices include an avatar, display name, role, bio, email, location, and membership badge, bound to the supplied record.
 - Several useful values for layout props and button labels. Quoted titles in the request are copied into additional Heading choices.
 
 These are **atomic element candidates**, not page templates. A host application could build them from its actual data schema, records, localized copy, and permitted operations. This example supplies those values in `grammar.ts`; apps supply their own candidates to the reusable core API. Repeating the same field in multiple forms and arbitrary new text/data are not supported.
@@ -48,7 +48,7 @@ The composer validates tree structure and candidate values; it does not guarante
 
 The code bounds each request to 14 evaluation calls, nesting depth four, ten seconds per provider request, and 55 seconds overall. The selected seed may contain up to 100 elements. A limit, cancellation, or error retains the current preview and labels it partial. The shared endpoint uses the web app's request rate limiters. Both models edit the selected version; Clear starts fresh. The stream tab exposes construction decisions alongside spec patches. Provider calls and spec assembly never execute the selected UI actions.
 
-Try follow-ups such as `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. The server shares existing display labels to identify edit targets, without sharing raw state or entered field values. Existing specs must use the supported expression subset and form a valid tree. Edits retain state from the selected spec, as in the default model flow; interactive preview state is not saved into version history.
+Try `Design a user profile card`, then `Remove the bio` or `Make the avatar smaller`. For settings, try `Remove the email notifications switch`, `Change the heading to "Account settings"`, or `Move the email field above the name field`. The server shares existing display labels and matching candidate descriptions to identify edit targets, without sharing raw state or entered field values. Existing specs must use the supported expression subset and form a valid tree. Edits retain state from the selected spec, as in the default model flow; interactive preview state is not saved into version history.
 
 
 ## Transport and files
