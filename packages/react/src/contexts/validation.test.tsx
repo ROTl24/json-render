@@ -27,6 +27,22 @@ function Field({
   return <span data-testid={testId}>{errors[0] ?? ""}</span>;
 }
 
+function ValidatingField({
+  testId,
+  config,
+}: {
+  testId: string;
+  config: ValidationConfig;
+}) {
+  const { errors, validate } = useFieldValidation("/form/name", config);
+  return (
+    <>
+      <button onClick={validate}>Validate first</button>
+      <span data-testid={testId}>{errors[0] ?? ""}</span>
+    </>
+  );
+}
+
 function ValidateButton() {
   const { validateAll } = useValidation();
   return <button onClick={validateAll}>Validate</button>;
@@ -53,6 +69,19 @@ function TestForm({ showFirst }: { showFirst: boolean }) {
         )}
         <Field key="active" testId="active" config={emailConfig} />
         <ValidateButton />
+      </ValidationProvider>
+    </StateProvider>
+  );
+}
+
+function LocallyValidatedSharedPathForm({ showFirst }: { showFirst: boolean }) {
+  return (
+    <StateProvider initialState={{ form: { name: "" } }}>
+      <ValidationProvider>
+        {showFirst && (
+          <ValidatingField testId="first" config={requiredConfig} />
+        )}
+        <Field testId="active" config={emailConfig} />
       </ValidationProvider>
     </StateProvider>
   );
@@ -87,5 +116,17 @@ describe("ValidationProvider registrations", () => {
     view.rerender(<TestForm showFirst={false} />);
 
     expect(screen.getByTestId("active").textContent).toBe("Invalid email");
+  });
+
+  it("clears errors produced by a released shared-path registration", () => {
+    const view = render(<LocallyValidatedSharedPathForm showFirst />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Validate first" }));
+    expect(screen.getByTestId("first").textContent).toBe("Name is required");
+    expect(screen.getByTestId("active").textContent).toBe("Name is required");
+
+    view.rerender(<LocallyValidatedSharedPathForm showFirst={false} />);
+
+    expect(screen.getByTestId("active").textContent).toBe("");
   });
 });

@@ -111,6 +111,17 @@ function getActiveConfig(
   return active;
 }
 
+/** Whether any live registration uses the given validation config. */
+function hasRegisteredConfig(
+  registrations: Map<symbol, ValidationConfig>,
+  target: ValidationConfig,
+): boolean {
+  for (const config of registrations.values()) {
+    if (validationConfigEqual(config, target)) return true;
+  }
+  return false;
+}
+
 /**
  * Provider for validation
  */
@@ -126,6 +137,9 @@ export function ValidationProvider({
   // Mutable mirror of fieldStates for synchronous reads (e.g. reading errors
   // immediately after validateAll() before React flushes the batched setState).
   const fieldStatesRef = useRef<Record<string, FieldValidationState>>({});
+  // Tracks the config that produced each stored result so cleanup can tell
+  // whether that result still belongs to any mounted registration.
+  const fieldStateConfigsRef = useRef<Map<string, ValidationConfig>>(new Map());
   // Each mounted control gets its own registration. This lets one control
   // unregister without disabling another control bound to the same path.
   const fieldRegistrationsRef = useRef<
@@ -136,6 +150,7 @@ export function ValidationProvider({
   const imperativeRegistrationIdsRef = useRef<Map<string, symbol>>(new Map());
 
   const clear = useCallback((path: string) => {
+    fieldStateConfigsRef.current.delete(path);
     if (!Object.prototype.hasOwnProperty.call(fieldStatesRef.current, path)) {
       return;
     }
@@ -213,6 +228,10 @@ export function ValidationProvider({
         const activeConfigBeforeRemoval = getActiveConfig(currentRegistrations);
         currentRegistrations.delete(registrationId);
         const activeConfigAfterRemoval = getActiveConfig(currentRegistrations);
+        const fieldStateConfig = fieldStateConfigsRef.current.get(path);
+        const fieldStateConfigWasReleased =
+          fieldStateConfig !== undefined &&
+          !hasRegisteredConfig(currentRegistrations, fieldStateConfig);
 
         if (currentRegistrations.size === 0) {
           fieldRegistrationsRef.current.delete(path);
@@ -224,7 +243,8 @@ export function ValidationProvider({
           !validationConfigEqual(
             activeConfigBeforeRemoval,
             activeConfigAfterRemoval,
-          )
+          ) ||
+          fieldStateConfigWasReleased
         ) {
           clear(path);
         }
@@ -264,6 +284,7 @@ export function ValidationProvider({
         ...fieldStatesRef.current,
         [path]: newFieldState,
       };
+      fieldStateConfigsRef.current.set(path, config);
       setFieldStates(fieldStatesRef.current);
 
       return result;
@@ -300,6 +321,11 @@ export function ValidationProvider({
         ),
       );
       setFieldStates(fieldStatesRef.current);
+    }
+    for (const path of fieldStateConfigsRef.current.keys()) {
+      if (!activePaths.has(path)) {
+        fieldStateConfigsRef.current.delete(path);
+      }
     }
 
     for (const [path, registrations] of fieldRegistrationsRef.current) {
